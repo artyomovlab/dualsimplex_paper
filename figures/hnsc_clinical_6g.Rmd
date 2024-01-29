@@ -1,0 +1,8 @@
+---
+title: "Figure 6G: Correlations between TCGA-HNSC deconvolution results and sample clinical features"
+output: html_document
+---
+
+```{r}
+plot(cars)
+```
