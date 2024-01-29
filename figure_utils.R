@@ -1,9 +1,3 @@
-# Install Linseed 2
-# TODO: replace with actual installation
-unloadNamespace("linseed2")
-devtools::load_all("../linseed2")
-
-
 ######## COLORS ########
 # Muted palette (much color: bar plots, etc.)
 colors_m <- c("#518C97", "#5DB89A", "#8CC6AE", "#FFA07A", "#E57567", "#F0C376", "#D9AA8A")
