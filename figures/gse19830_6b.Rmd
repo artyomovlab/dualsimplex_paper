@@ -141,7 +141,9 @@ lo2$plot_projected("zero_distance", "zero_distance", use_dims = list(2:3))
 
 ## Additional filters
 ### MAD filtering
+
 check distribution of median absolute deviation to see which genes will be deleted
+
 ```{r}
 dummy_threshold <-  1
 data <-  lo2$get_data()
@@ -153,6 +155,7 @@ plot_feature(data, feature = "log_mad", col_by ='PASS_FILTER')
 ```
 
 Filter the data with selected threshold
+
 ```{r fig.height = 4, fig.width=14}
 lo2$basic_filter(log_mad_gt = dummy_threshold, )
 lo2$project(3)
@@ -178,9 +181,12 @@ distance_dist_plot_noizy <- plot_feature(lo2$get_data(), feature = "plane_distan
 color = fData(lo2$get_data())$plane_distance
 X_points_noizy <-  plot_projection_points(lo2$st$proj, use_dims=2:3,color=color,color_name="plane_distance", spaces = c("X"), pt_size = 2) + theme_minimal(base_size = 15)
 
-plotlist = list( X_points_noizy, distance_dist_plot_noizy)
+distances_distribution <-   plot_feature_pair(lo2$get_data(), "plane_distance", "zero_distance", T, size = 0.1)
 
-cowplot::plot_grid(plotlist=plotlist, rel_widths = c(0.66, 0.33)) 
+
+plotlist = list( X_points_noizy, distance_dist_plot_noizy, distances_distribution)
+
+cowplot::plot_grid(plotlist=plotlist, nrow = 1, rel_widths = c(0.4, 0.3, 0.3)) 
 ```
 
 Remove genes which are to far from projection hyperplane

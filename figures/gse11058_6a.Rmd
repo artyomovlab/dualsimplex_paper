@@ -184,7 +184,7 @@ lo2$plot_projected("zero_distance", "zero_distance", use_dims = list(3:4))
 check distribution of median absolute deviation to see which genes will be deleted
 
 ```{r}
-dummy_threshold <-  1
+dummy_threshold <-  2.5
 data <-  lo2$get_data()
 anno <-  get_anno(data)
 anno$PASS_FILTER <-  FALSE
@@ -196,7 +196,7 @@ plot_feature(data, feature = "log_mad", col_by ='PASS_FILTER')
 Filter the data with selected threshold
 
 ```{r fig.height = 4, fig.width=14}
-lo2$basic_filter(log_mad_gt = 2, )
+lo2$basic_filter(log_mad_gt = dummy_threshold, )
 lo2$project(n_ct)
 
 svd_plot_2 <- lo2$plot_svd(1:10) + theme_minimal(base_size = 8)
@@ -223,15 +223,18 @@ distance_dist_plot_noizy <- plot_feature(lo2$get_data(), feature = "plane_distan
 color = fData(lo2$get_data())$plane_distance
 X_points_noizy <-  plot_projection_points(lo2$st$proj, use_dims=2:3,color=color,color_name="plane_distance", spaces = c("X"), pt_size = 2) + theme_minimal(base_size = 15)
 
-plotlist = list( X_points_noizy, distance_dist_plot_noizy)
+distances_distribution <-   plot_feature_pair(lo2$get_data(), "plane_distance", "zero_distance", T, size = 0.1)
 
-cowplot::plot_grid(plotlist=plotlist, rel_widths = c(0.66, 0.33)) 
+
+plotlist = list( X_points_noizy, distance_dist_plot_noizy, distances_distribution)
+
+cowplot::plot_grid(plotlist=plotlist, nrow = 1, rel_widths = c(0.4, 0.3, 0.3)) 
 ```
 
 Remove genes which are to far from projection hyperplane
 
 ```{r}
-lo2$distance_filter(plane_d_lt = 0.2, zero_d_lt = NULL, genes = T)
+lo2$distance_filter(plane_d_lt = 0.19, zero_d_lt = 0.3, genes = T)
 lo2$project(n_ct)
 ```
 
@@ -253,6 +256,7 @@ lo2$plot_svd_history()
 ## Make umap in advance for visualization purposes
 
 ```{r}
+set.seed(23)
 lo2$run_umap(neighbors_X = 25, neighbors_Omega = 5)
 lo2$plot_projected("zero_distance", "zero_distance", use_dims = NULL)
 ```
@@ -260,7 +264,8 @@ lo2$plot_projected("zero_distance", "zero_distance", use_dims = NULL)
 ### Initialze random points
 
 ```{r}
-set.seed(23)
+#set.seed(72)
+set.seed(33)
 lo2$init_solution("random")
 # original space
 lo2$plot_projected("zero_distance", "zero_distance", use_dims = c(3:4))
@@ -276,11 +281,11 @@ We increase contribution of  term related to positivity constraint for later ite
 ```{r}
 
 LR_DECAY_STEPS = 1
-PARAMETERS_INCREASE_STEPS = 2
+PARAMETERS_INCREASE_STEPS = 4
 lr_decay <- 0.5
 params_increase <- 2
-original_lambda_term <- 0.5  #coef_hinge_H
-original_beta_term <- 0.5 #coef_hinge_W
+original_lambda_term <- 0.01  #coef_hinge_H
+original_beta_term <- 0.1 #coef_hinge_W
 lr_x <-  0.001
 lr_omega <- 0.001
 
@@ -318,6 +323,7 @@ plot_errors(lo2$st$solution_proj,   variables = c(
     "total_error"
   ))
 ```
+
 
 ## Prepare plots as they are in the paper
 ```{r}
@@ -367,7 +373,8 @@ colnames(lo2$st$proj$umap$X)  <- c("UMAP1", "UMAP2")
 colnames(lo2$st$proj$umap$Omega)  <- c("UMAP1", "UMAP2")
 
 proj_solution_history <- lo2$plot_projected(use_dims = (2:3), wrap=F, with_legend = F)
-proj_solution_history
+proj_solution_history[[1]]
+proj_solution_history[[2]]
 ```
 Use UMAP and decorate it how it was done in the paper
 
@@ -401,16 +408,23 @@ names(solution)
 Check ratio of true proportion or component expression to predicted 
 
 
+
 ```{r fig.width=20, fig.height=5}
+
 ptb <- coerce_pred_true_basis(solution$W, true_basis[rownames(solution$W), ])
 ptp <- coerce_pred_true_props(solution$H, true_proportions)
 plot_ptp_scatter(ptp)
 plot_ptb_scatter(ptb)
 ```
 
+
+
+
+
 #### Visualize the same as lines 
 
 ```{r}
+ 
 ptp_lines <- linseed::plotProportions(ptp[[1]], 
                                        ptp[[2]], 
                                        pnames = c("predicted", "true"),
@@ -452,7 +466,7 @@ it is hard to visualize 3D shape in 2D
 ```{r}
 colors <-  which_marker(rownames(fData(lo2$st$data)), lo2$st$marker_genes)
 plot_projection_points(lo2$st$proj, use_dims = (3:4), spaces = c("X"), pt_size = 2, color=colors) +
-  scale_color_manual(values = colors_v, na.value = adjustcolor("grey70", alpha.f = 0.7)) + 
+  scale_color_manual(values = colors_v[3:6], na.value = adjustcolor("grey70", alpha.f = 0.7)) + 
   labs(col = "Marker Cell Type", x = "UMAP1", y = "UMAP2") +
   theme_bw(base_family = "sans", base_size = 18) +
   theme(legend.position = "right", axis.ticks = element_blank(),
@@ -511,13 +525,13 @@ fig_X <- plotly::plot_ly(
   
   mode = "markers"
 )  %>%
-  plotly::layout(showlegend = TRUE,
+  plotly::layout(showlegend = F,
     scene = list(
       xaxis = c(title = "R2", ax_settings),
       yaxis = c(title = "R3", ax_settings),
       zaxis = c(title = "R4", ax_settings)
     )
-  )  %>%  config(toImageButtonOptions = list(format = "svg", width = 650,
+  )  %>%  config(toImageButtonOptions = list(format = "svg", width = 600,
                                                               height = 600))
 
 
@@ -576,10 +590,17 @@ fig_Omega
 
 ```{r fig.height = 5, fig.width = 2}
 markers  <- lo2$get_marker_genes()
+
+# Gess correct order of proportions column here
+solution <-  lo2$finalize_solution()
+reordered_H <- solution$H[guess_order(solution$H, true_proportions), ]
+sorted_predicted_cell_numbers <- strtoi(gsub("^.*_", "", rownames(reordered_H)))
+
 to_plot <- data_raw[unlist(markers), apply(true_proportions, 2, function(x) any(x == 1))]
 
 # Minmax scaling for visualization only
 to_plot <- as.data.frame(apply(to_plot, 1, function(x) (x - min(x)) / (max(x) - min(x))))
+
 
 
 #ht_opt$TITLE_PADDING = unit(c(30, 30), "points")
@@ -587,9 +608,13 @@ to_plot <- as.data.frame(apply(to_plot, 1, function(x) (x - min(x)) / (max(x) - 
 nrows <-  dim(to_plot)[[1]]
 ncols <-  dim(to_plot)[[2]]
 #  "Jurkat" "IM-9"   "Raji"   "THP-1"
+
+
 factor_rows <- factor(rep(rownames(true_proportions), each=nrows/n_ct), 
-                      levels=c("IM-9", "Jurkat" , "THP-1", "Raji"))
-factor_columns <- factor(rep(c(1:n_ct), each=ncols/n_ct), levels=c(1:n_ct))
+                      levels=c( "Jurkat", "IM-9" ,"Raji", "THP-1"))
+
+factor_columns <- factor(rep(c(1:n_ct), each=ncols/n_ct), levels=sorted_predicted_cell_numbers)
+
 marker_map <-  Heatmap(to_plot,name="W", 
                cluster_rows=FALSE, 
                cluster_columns = FALSE, 
@@ -599,7 +624,7 @@ marker_map <-  Heatmap(to_plot,name="W",
                column_split = factor_columns,
                row_split = factor_rows,
                use_raster =T,
-               column_title_gp = gpar(fill = colors_v[3:6], border = "black", fontsize =20),
+               column_title_gp = gpar(fill = colors_v[3:6][sorted_predicted_cell_numbers], border = "black", fontsize =20),
                row_title_gp = gpar(fontsize =20),
                column_title_side  = "bottom"
                )
