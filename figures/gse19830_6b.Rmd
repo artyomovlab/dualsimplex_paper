@@ -3,7 +3,6 @@ title: "Figure 6B: Deconvolution of GSE19830"
 output: html_document
 ---
 
-
 # Imports
 
 ```{r}
@@ -14,6 +13,7 @@ source("../figure_utils.R") # for same colors
 ```
 
 ## Dependencies
+
 ```{r}
 library('GEOquery')
 library(biomaRt)
@@ -21,9 +21,8 @@ library(matrixStats)
 library(ComplexHeatmap)
 ```
 
-
-
 ## Package
+
 ```{r}
 unloadNamespace("linseed2")
 devtools::load_all(path='../../../linseed_code/linseed2/')
@@ -45,10 +44,11 @@ data_raw <- linearize_dataset(data_raw)
 
 ```
 
-
 ## Map probes
 
+## Map probe IDs to genes
 probe id will be converted and collapsed to gene names
+
 ```{r}
 # probes which are present in data
 probe_mapping <- biomaRt::select(rat2302.db::rat2302.db, rownames(data_raw), c("SYMBOL"))
@@ -65,8 +65,8 @@ data_raw <-  tapply(data_raw, list(row.names(data_raw)[row(data_raw)], colnames(
 ```
 
 ## Extract true proportions (H) and basis (W) from the data
-Info about true samples is included for this dataset.
-We use this info for validation.
+
+Info about true samples is included for this dataset. We use this info for validation.
 
 ```{r}
 # H
@@ -95,6 +95,7 @@ colnames(true_basis) <-  component_names
 ```
 
 ## Remove pure samples
+
 (Optional, to make the task harder)
 
 ```{r}
@@ -104,15 +105,17 @@ colnames(true_basis) <-  component_names
 ```
 
 ## Print data dimensions
+
 ```{r}
 print(paste("Dim for the whole data:", toString(dim(data_raw))))
 print(paste("Dim for hidden proportions (H):", toString(dim(true_proportions))))
 print(paste("Dim for hidden basis (W):", toString(dim(true_basis))))
 ```
 
-
 ## Prepare coding gene names
+
 (optional step. these genes will be deleted from the data)
+
 ```{r}
 coding_info <- biomaRt::select(rat2302.db::rat2302.db, rownames(data_raw),keytype="SYMBOL", c("SYMBOL", "GENETYPE"))
 # possible values for genetype "protein-coding" "ncRNA""pseudo""other" "unknown" 
@@ -125,6 +128,7 @@ length(PROTEIN_CODING_GENES)
 ## Create lo2 object and prefilter
 
 keep coding genes only
+
 ```{r}
 lo2 <- Linseed2Solver$new()
 lo2$set_data(data_raw, gene_anno_lists=list(CODING = PROTEIN_CODING_GENES))
@@ -140,6 +144,7 @@ lo2$plot_projected("zero_distance", "zero_distance", use_dims = list(2:3))
 ```
 
 ## Additional filters
+
 ### MAD filtering
 
 check distribution of median absolute deviation to see which genes will be deleted
@@ -168,9 +173,7 @@ cowplot::plot_grid(plotlist=plotlist, rel_widths = c(0.66, 0.33))
 
 Repeat previous cell with increasing thresholds to observe how SVD singular values will change. (in a perfect case should see only n_ct non-zero singular values)
 
-```{r}
-lo2$plot_svd_history()
-```
+
 
 ### Denoising the data
 
@@ -212,6 +215,7 @@ lo2$plot_svd_history()
 ```
 
 ## Finaly train the model
+
 ### Initialze random points
 
 ```{r}
@@ -222,9 +226,7 @@ lo2$plot_projected("zero_distance", "zero_distance",with_solution=TRUE, use_dims
 
 ### Train multiple times with changing hyperparameters
 
-We make learning smaller for later iterations
-We increase contribution of  term related to positivity constraint for later iterations
-
+We make learning smaller for later iterations We increase contribution of term related to positivity constraint for later iterations
 
 ```{r}
 start.time <- Sys.time()
@@ -233,7 +235,7 @@ LR_DECAY_STEPS = 2
 PARAMETERS_INCREASE_STEPS = 3
 lr_decay <- 0.5
 params_increase <- 2
-original_lambda_term <- 10  #coef_hinge_H
+original_lambda_term <- 0.1  #coef_hinge_H
 original_beta_term <- 1 #coef_hinge_W
 lr_x <-  0.01
 lr_omega <- 0.01
@@ -287,12 +289,15 @@ options("linseed-rasterize"=T)
 ```
 
 ### History of solution
-```{r}
+
+```{r fig.width=5, fig.height=5}
 colnames(lo2$st$proj$X) <- c("R1", "R2", "R3")
 colnames(lo2$st$proj$Omega) <- c("S1", "S2", "S3")
 proj_solution_history <- lo2$plot_projected(use_dims = (2:3), wrap=F, with_legend = F)
-proj_solution_history
+proj_solution_history[[1]] # genes in a space of samples 
+proj_solution_history[[2]] # samples in a space of genes
 ```
+
 Decorate it how it was done in the paper
 
 ```{r fig.width=10, fig.height=5}
@@ -307,14 +312,18 @@ ggarrange(pltX, pltOmega)
 ```
 
 ### Solution check plots
-Get solution  (W and H)
+
+## Get solution (W and H)
+
 ```{r}
 solution <- lo2$finalize_solution()
 names(solution)
 #solution <- lo2$get_solution()
 ```
+
 ## Compare with true proportions/basis
-Check ratio of true proportion or component expression to predicted 
+
+Check ratio of true proportion or component expression to predicted
 
 ```{r fig.width=20, fig.height=5}
 cur_H <- solution$H 
@@ -333,7 +342,7 @@ ptb <- coerce_pred_true_basis(solution$W, true_basis[rownames(solution$W), ])
 plot_ptb_scatter(ptb)
 ```
 
-Visualize the same as lines 
+Visualize the same as lines
 
 ```{r fig.height = 5, fig.width = 7}
 ptp_lines <-  linseed::plotProportions(ptp[[1]], 
@@ -359,7 +368,6 @@ to_plot <- data_raw[unlist(markers), apply(true_proportions, 2, function(x) any(
 
 lo2$plot_projected(rownames(to_plot), use_dims = (2:3))
 ```
-
 
 ### More decorated markers plot (as it is in the paper)
 
@@ -391,7 +399,6 @@ ggsave(filename, plot_markers, width=3, height=3, device=svg)
 plot_markers
 ```
 
-
 ## Plot heatmap of marker genes expressions per component
 
 ```{r fig.height = 5, fig.width = 2}
@@ -422,5 +429,3 @@ draw(marker_map)
 dev.off()
 marker_map
 ```
-
-

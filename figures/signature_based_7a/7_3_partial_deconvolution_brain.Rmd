@@ -483,14 +483,13 @@ for (rep_n in seq(1, 5)) {
 ## Make comparison plot for multiple methods
 
 ```{r fig.height=10, fig.width=11}
-save_dir <- "./partial_fig_7_save/brain"
+#save_dir <- "./7_partial_figure_save/brain"
 filename <- paste0(dir_to_save_fig, "7_3_3_barplot.svg")
 
 models <- c("linseed2", "dsa"
             , "cib"
             )
 signatures <- list("VL", "NG", "CA")
-
 total_rmses <- data.frame()
 for (rep_n in seq(1, 5)) {
   this_dfs <- lapply(models, function(model) {
@@ -509,7 +508,7 @@ for (rep_n in seq(1, 5)) {
     } else if (model == "dsa") {
       rmses$model <- "DSA"
     } else if (model == "linseed2") {
-      rmses$model <- "Linseed 2"
+      rmses$model <- "DualSimplex"
     }
     rmses$rep <- rep_n
     rmses

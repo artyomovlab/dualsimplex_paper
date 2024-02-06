@@ -337,11 +337,11 @@ get_significance_values <-  function(distance_matrix, comparisons, vertical_gap 
 ## Plot main boxplot with RMSE statistics for multiple runs, multiple methods for each component. (All 3 matrices)
 plot_metrics_box <- function(res_methods, data_used, folder_to_save_results, title="Matrices") {
   W_matrix_distances <-  get_W_rmse_values(res_methods = res_methods, data_used = data_used)
-  W_matrix_distances[method == 'Linseedv2 NMF']$method <- 'Linseed2'
+  W_matrix_distances[method == 'Linseedv2 NMF']$method <- 'DualSimplex'
   H_matrix_distances <-  get_H_rmse_values(res_methods = res_methods, data_used = data_used)
-  H_matrix_distances[method == 'Linseedv2 NMF']$method <- 'Linseed2'
+  H_matrix_distances[method == 'Linseedv2 NMF']$method <- 'DualSimplex'
   V_matrix_distances <-  get_V_rmse_values(res_methods = res_methods, data_used = data_used)
-  V_matrix_distances[method == 'Linseedv2 NMF']$method <- 'Linseed2'
+  V_matrix_distances[method == 'Linseedv2 NMF']$method <- 'DualSimplex'
   W.summary <- W_matrix_distances %>% 
     group_by(method, component) %>% 
     summarise(
@@ -364,10 +364,10 @@ plot_metrics_box <- function(res_methods, data_used, folder_to_save_results, tit
     )
   
   
-  comparisons = list(c("nsNMF", "Linseed2"), c("lee", "Linseed2"),c("brunet", "Linseed2"))
-  W_matrix_distances$method <- relevel(factor(W_matrix_distances$method), ref="Linseed2")
-  H_matrix_distances$method <- relevel(factor(H_matrix_distances$method), ref="Linseed2")
-  V_matrix_distances$method <- relevel(factor(V_matrix_distances$method), ref="Linseed2")
+  comparisons = list(c("nsNMF", "DualSimplex"), c("lee", "DualSimplex"),c("brunet", "DualSimplex"))
+  W_matrix_distances$method <- relevel(factor(W_matrix_distances$method), ref="DualSimplex")
+  H_matrix_distances$method <- relevel(factor(H_matrix_distances$method), ref="DualSimplex")
+  V_matrix_distances$method <- relevel(factor(V_matrix_distances$method), ref="DualSimplex")
   
   median_df_W <- W_matrix_distances %>%  
     group_by(method, component) %>%  
@@ -545,24 +545,24 @@ plot_metrics_box <- function(res_methods, data_used, folder_to_save_results, tit
   filename <- paste0(folder_to_save_results,  title, ".svg")
   ggsave(file=filename, plot=t, width=18, height=5, device=svg)
   filename <- paste0(folder_to_save_results, "V_", title, ".svg")
-  ggsave(filename, gv, width=7, height=5, device=svg)
+  ggsave(filename, gv, width=7.5, height=5, device=svg)
   filename <- paste0(folder_to_save_results, "H_", title, ".svg")
-  ggsave(filename, gh, width=7, height=5, device=svg)
+  ggsave(filename, gh, width=7.5, height=5, device=svg)
   filename <- paste0(folder_to_save_results, "W_", title, ".svg")
-  ggsave(filename, gw, width=7, height=5, device=svg)
+  ggsave(filename, gw, width=7.5, height=5, device=svg)
   for (comp_ind in 1:length(per_component_w_plot_list)) {
     filename <- paste0(folder_to_save_results, "W_", comp_ind, title, ".svg")
-    ggsave(filename, per_component_w_plot_list[[comp_ind]], width=7, height=5, device=svg)
+    ggsave(filename, per_component_w_plot_list[[comp_ind]], width=7.5, height=5, device=svg)
     filename <- paste0(folder_to_save_results,"H_", comp_ind, title, ".svg")
-    ggsave(filename, per_component_h_plot_list[[comp_ind]], width=7, height=5, device=svg)
+    ggsave(filename, per_component_h_plot_list[[comp_ind]], width=7.5, height=5, device=svg)
   }
   per_comp_common_w <- ggarrange(plotlist=per_component_w_plot_list, nrow = 1, common.legend = TRUE, legend='right')
   filename <- paste0(folder_to_save_results,"W_common_", title, ".svg")
-  ggsave(filename, per_comp_common_w, width=21, height=5, device=svg)
+  ggsave(filename, per_comp_common_w, width=23, height=5, device=svg)
   
   per_comp_common_h <- ggarrange(plotlist=per_component_h_plot_list, nrow = 1, common.legend = TRUE, legend='right')
   filename <- paste0(folder_to_save_results,"H_common_", title, ".svg")
-  ggsave(filename, per_comp_common_h, width=21, height=5, device=svg)
+  ggsave(filename, per_comp_common_h, width=23, height=5, device=svg)
   
   
   return (list(W_matrix_distances=W_matrix_distances, 
@@ -619,29 +619,34 @@ plot_pictures <- function(W_matrix, picture_title="title", folder_to_save_result
   
   number_of_pictures <- dim(W_matrix)[[2]]
   size <- as.integer(sqrt(dim(W_matrix)[[1]]))
-  print(number_of_pictures)
   par(mfrow = c(1,number_of_pictures),mar=c(0.5, 0.5, 0.5,0.5), oma=c(0.5, 0.5, 0.5,0.5)) # all sides have 3 lines of space
   res <- lapply(c(1:number_of_pictures), function(picture_index){
     # plot(raster(matrix(W_matrix[, picture_index], nrow = size, ncol = size, byrow = TRUE)),
     #      col = gray.colors(100, start = 0.3, end = 0.9, gamma = 2.2, alpha = NULL), 
     #      axes=FALSE, box=FALSE, legend=FALSE, ann=FALSE)
-    image(tf(matrix(W_matrix[, picture_index], nrow = size, ncol = size, byrow = TRUE)),
+    matrix_to_draw <- tf(matrix(W_matrix[, picture_index], nrow = size, ncol = size, byrow = TRUE))
+    image(matrix_to_draw,
           col=grey(seq(0, 1, length = 64)), axes = FALSE)
+    return(matrix_to_draw)
+    
   })
   #title(main = picture_title, font.main = 4)
   #title(main= picture_title, outer = TRUE)
   dev.off()
+  return(res)
   
 }
 
 
 plot_pictures_for_result <- function(method_results, model_index, folder_to_save_results) {
-  lapply(method_results, function (method_multiple_results){
+  res <- lapply(method_results, function (method_multiple_results){
     method_result <- method_multiple_results[[model_index]]
     curr_W <- method_result@fit@W
     plot_pictures(curr_W, method_result@method, folder_to_save_results)
     #par(oma=c(0,0,0,0)) # all sides have 3 lines of space
   })
+  return(res)
+  
 }
 
 

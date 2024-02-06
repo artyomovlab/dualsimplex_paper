@@ -10,28 +10,35 @@ dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
 unloadNamespace("linseed2")
 devtools::load_all(path='../../../linseed2/')
 source('nmf_methods.R')
-source("../figure_utils.R") # for same colors
+source("../../figure_utils.R") # for same colors
 ```
 
-# Read saved NMF results
+# Analyze saved NMF results
 ```{r}
 current_K <- 4
 current_M <- 16384
 current_N <- 100
 ```
 
+## Randomly generated proportions result
 ```{r}
 file_name <- paste0(dir_to_save_fig, 'pictures_', current_K ,'K_', current_N, 'N_', current_M, 'M_random-H_10runs_10init.rds')
 result_random <- readRDS(file=file_name)
 
 ```
 
-# Draw result pictures obtained by each method
+### Draw result pictures obtained by each method
 
-```{r}
-t <- plot_pictures_for_result(result_random$fit_objects, model_index = 10, dir_to_save_fig)
+
+```{r fig.height = 5, fig.width = 5}
+
+per_method_pictures <- plot_pictures_for_result(result_random$fit_objects, model_index = 10, dir_to_save_fig)
+for (k in 1:current_K) {
+  image(per_method_pictures$`Linseedv2 NMF`[[k]], col=grey(seq(0, 1, length = 64)), axes=0)
+}
+
 ```
-
+### Plot boxplots with distances to original matrices
 ```{r fig.height = 5, fig.width = 20}
 distances_to_check_random <- plot_metrics_box(res_methods = result_random$fit_objects, 
                                          data_used=result_random$data_used, 
@@ -159,7 +166,7 @@ fig_Omega
 ```
 ## Plot example of mixed picture
 
-```{r}
+```{r fig.height = 5, fig.width =5}
 picture_title <- "mixed_picture1"
 filename <- paste0(dir_to_save_fig, picture_title, ".jpeg")
 jpeg(filename, width = 400, height = 400)
@@ -170,16 +177,20 @@ par(mar=c(0, 0, 0,0), oma=c(0, 0, 0,0)) # all sides have 3 lines of space
   image(tf(matrix(V_matrix[, 17], nrow = size, ncol = size, byrow = TRUE)),
        col=grey(seq(0, 1, length = 256)), axes = FALSE)
 dev.off()
+image(tf(matrix(V_matrix[, 18], nrow = size, ncol = size, byrow = TRUE)),
+     col=grey(seq(0, 1, length = 256)), axes = FALSE)
 ```
 
 ## Boxplots
 
 
-```{r}
+```{r fig.height = 5, fig.width = 20}
 distances_to_check_simplex <- plot_metrics_box(res_methods = result_simplex$fit_objects, 
                                          data_used=result_simplex$data_used, 
                                          title=paste("Simplex: K =", as.character(current_K), "M =", as.character(current_M),"N =",as.character(current_N)),
                                          dir_to_save_fig)
+
+distances_to_check_simplex$plot
 ```
 
 

@@ -3,7 +3,6 @@ title: "Figure 6A: Deconvolution of GSE11058"
 output: html_document
 ---
 
-
 # Imports
 
 ```{r}
@@ -13,8 +12,8 @@ dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
 source("../figure_utils.R") # for same colors
 ```
 
-
 ## Dependencies
+
 ```{r}
 library('GEOquery')
 library(biomaRt)
@@ -24,9 +23,8 @@ library(progress)
 library(plotly)
 ```
 
-
-
 ## Package
+
 ```{r}
 unloadNamespace("linseed2")
 devtools::load_all(path='../../../linseed_code/linseed2/')
@@ -48,14 +46,9 @@ data_raw <- Biobase::exprs(gse)
 data_raw <- linearize_dataset(data_raw)
 ```
 
-
-
-
-
-## Map probes
+## Map probes to genes
 
 probe id will be converted and collapsed to gene names
-
 
 ```{r}
 # probes which are present in data
@@ -71,12 +64,12 @@ data_raw <-  tapply(data_raw, list(row.names(data_raw)[row(data_raw)], colnames(
 
 ```
 
-
 ## Extract true proportions (H) and basis (W) from the data
-Info about true samples is included for this dataset.
-We use this info for validation.
+
+Info about true samples is included for this dataset. We use this info for validation.
 
 ### True H
+
 ```{r}
 pdata <- pData(gse)
 component_names <-  c("Jurkat", "IM-9", "Raji", "THP-1")
@@ -118,7 +111,7 @@ colnames(proportions) <-  component_names
 true_proportions <- t(proportions)
 ```
 
-## True W
+### True W
 
 ```{r}
 components <-  lapply(c(1:n_ct), function(comp_num){
@@ -136,6 +129,7 @@ true_marker_list <- get_signature_markers(true_basis, n_marker_genes = 100)
 ```
 
 ## Remove pure samples
+
 (Optional, to make the task harder)
 
 ```{r}
@@ -153,6 +147,7 @@ print(paste("Dim for hidden basis (W):", toString(dim(true_basis))))
 ```
 
 ## Prepare coding gene names
+
 (optional step. these genes will be deleted from the data)
 
 ```{r}
@@ -161,10 +156,10 @@ coding_info <- biomaRt::select(hgu133plus2.db::hgu133plus2.db, rownames(data_raw
 PROTEIN_CODING_GENES <-  coding_info[coding_info$GENETYPE == 'protein-coding', 'SYMBOL']
 length(PROTEIN_CODING_GENES)
 ```
+
 # Dual simplex method
 
 ## Create lo2 object and prefilter
-
 
 ```{r}
 lo2 <- Linseed2Solver$new()
@@ -174,13 +169,16 @@ lo2$basic_filter( keep_true_cols = c("CODING"))
 lo2$project(n_ct)
 print(paste("Dim for the prefiltered data data:", toString(dim(lo2$get_data()))))
 ```
+
 ```{r fig.height = 5, fig.width = 11}
 lo2$plot_svd(dims=1:15)
 lo2$plot_projected("zero_distance", "zero_distance", use_dims = list(3:4))
 ```
 
 ## Additional filters
+
 ### MAD filtering
+
 check distribution of median absolute deviation to see which genes will be deleted
 
 ```{r}
@@ -205,14 +203,11 @@ plotlist = list(points_2, svd_plot_2)
 cowplot::plot_grid(plotlist=plotlist, rel_widths = c(0.66, 0.33)) 
 ```
 
-
 Repeat previous cell with increasing thresholds to observe how SVD singular values will change. (in a perfect case should see only n_ct non-zero singular values)
 
 ```{r}
 lo2$plot_svd_history()
 ```
-
-
 
 ### Denoising the data
 
@@ -231,7 +226,7 @@ plotlist = list( X_points_noizy, distance_dist_plot_noizy, distances_distributio
 cowplot::plot_grid(plotlist=plotlist, nrow = 1, rel_widths = c(0.4, 0.3, 0.3)) 
 ```
 
-Remove genes which are to far from projection hyperplane
+Remove genes which are to far from projection hyperplane and zero point
 
 ```{r}
 lo2$distance_filter(plane_d_lt = 0.19, zero_d_lt = 0.3, genes = T)
@@ -255,12 +250,16 @@ lo2$plot_svd_history()
 
 ## Make umap in advance for visualization purposes
 
+since we have 3-dimensional simplex it is hard to visualize it in 2D. In practice UMAP looks good if you want to estimate the number of simplex corners and track the solution
+
 ```{r}
 set.seed(23)
 lo2$run_umap(neighbors_X = 25, neighbors_Omega = 5)
 lo2$plot_projected("zero_distance", "zero_distance", use_dims = NULL)
 ```
+
 ## Finaly train the model
+
 ### Initialze random points
 
 ```{r}
@@ -275,8 +274,7 @@ lo2$plot_projected("zero_distance", "zero_distance", use_dims = NULL)
 
 ### Train multiple times with changing hyperparameters
 
-We make learning smaller for later iterations
-We increase contribution of  term related to positivity constraint for later iterations
+We make learning smaller for later iterations We increase contribution of term related to positivity constraint for later iterations
 
 ```{r}
 
@@ -297,7 +295,7 @@ for  (lr_step in 1:LR_DECAY_STEPS) {
     lambda_term <-  original_lambda_term
     beta_term <- original_beta_term
       for (x in 1:PARAMETERS_INCREASE_STEPS) {
-
+        pb$tick()
         lo2$optim_solution(RUNS_EACH_STEP, 
                            optim_config(coef_hinge_H = lambda_term,
                                         coef_hinge_W =beta_term,
@@ -306,14 +304,14 @@ for  (lr_step in 1:LR_DECAY_STEPS) {
                                         ))
         lambda_term <- lambda_term * params_increase
         beta_term <-  beta_term * params_increase
-        pb$tick()
+
       }
     lr_x <- lr_x * lr_decay
     lr_omega <-  lr_omega * lr_decay
 }
 ```
-### Plot errors
 
+### Plot errors
 
 ```{r}
 plot_errors(lo2$st$solution_proj,   variables = c(
@@ -324,16 +322,14 @@ plot_errors(lo2$st$solution_proj,   variables = c(
   ))
 ```
 
-
 ## Prepare plots as they are in the paper
+
 ```{r}
 # This option makes all dots as a single layer reducing result image size
 options("linseed-rasterize"=T)
- 
 ```
 
 ### Save errors plot with rasterization
-
 
 ```{r}
 plotErrorsWithRastr = function(metadata, variables = c("deconv_error","lamdba_error","beta_error",
@@ -361,21 +357,19 @@ filename <- paste0(dir_to_save_fig, "simulation_trajectory", ".svg")
 ggsave(file=filename, plot=errors_plot, width=5, height=3, device=svg)
 ```
 
-
 ### History of solution
 
-
-
-```{r}
+```{r fig.width=5, fig.height=5}
 colnames(lo2$st$proj$X) <- c("R1", "R2", "R3", "R4")
 colnames(lo2$st$proj$Omega) <- c("S1", "S2", "S3", "S4")
 colnames(lo2$st$proj$umap$X)  <- c("UMAP1", "UMAP2")
 colnames(lo2$st$proj$umap$Omega)  <- c("UMAP1", "UMAP2")
 
 proj_solution_history <- lo2$plot_projected(use_dims = (2:3), wrap=F, with_legend = F)
-proj_solution_history[[1]]
-proj_solution_history[[2]]
+proj_solution_history[[1]] # genes in a space of samples
+proj_solution_history[[2]] # samples in a space of genes
 ```
+
 Use UMAP and decorate it how it was done in the paper
 
 ```{r}
@@ -398,16 +392,18 @@ ggarrange(pltX, pltOmega)
 ```
 
 ### Solution check plots
-Get solution  (W and H)
+
+Get solution (W and H)
+
 ```{r}
 solution <- lo2$finalize_solution()
 names(solution)
 #solution <- lo2$get_solution()
 ```
+
 #### Compare with true proportions/basis
-Check ratio of true proportion or component expression to predicted 
 
-
+Check ratio of true proportion or component expression to predicted
 
 ```{r fig.width=20, fig.height=5}
 
@@ -417,11 +413,7 @@ plot_ptp_scatter(ptp)
 plot_ptb_scatter(ptb)
 ```
 
-
-
-
-
-#### Visualize the same as lines 
+#### Visualize the same as lines
 
 ```{r}
  
@@ -440,16 +432,17 @@ ptp_lines
 
 ### Select and visualize marker genes
 
-
 ```{r fig.height = 5, fig.width = 11}
 
 markers  <- lo2$get_marker_genes()
 to_plot <- data_raw[unlist(markers), apply(true_proportions, 2, function(x) any(x == 1))]
 lo2$plot_projected(rownames(to_plot), use_dims = (2:3))
 ```
+
 ### More decorated markers plot (as it is in the paper)
 
 #### Visualize with UMAP
+
 ```{r}
 colors <-  which_marker(rownames(fData(lo2$st$data)), lo2$st$marker_genes)
 plot_projection_points(lo2$st$proj, use_dims = NULL, spaces = c("X"), pt_size = 2, color=colors) +
@@ -459,9 +452,8 @@ plot_projection_points(lo2$st$proj, use_dims = NULL, spaces = c("X"), pt_size = 
   theme(legend.position = "right", axis.ticks = element_blank(),
         axis.text = element_blank())
 ```
-#### Visualize original space
 
-it is hard to visualize 3D shape in 2D
+#### Visualize original space
 
 ```{r}
 colors <-  which_marker(rownames(fData(lo2$st$data)), lo2$st$marker_genes)
@@ -472,9 +464,11 @@ plot_projection_points(lo2$st$proj, use_dims = (3:4), spaces = c("X"), pt_size =
   theme(legend.position = "right", axis.ticks = element_blank(),
         axis.text = element_blank())
 ```
+
 ### Nice 3D visualization of markers
 
 #### Plot genes
+
 ```{r}
 library(plotly)
 
@@ -542,7 +536,6 @@ fig_X
 
 #### Plot samples
 
-
 ```{r}
 font <- list(
   family = "Helvetica",
@@ -584,7 +577,6 @@ fig_Omega <-  fig_Omega %>%  add_trace(x = Omega_points[,'S2'], y = Omega_points
             line = list(color = 'rgb(115, 115, 115)',  opacity = 0.4, width = 5))
 fig_Omega
 ```
-
 
 ## Plot heatmap of marker genes expressions per component
 
@@ -636,5 +628,3 @@ draw(marker_map)
 dev.off()
 marker_map
 ```
-
-
