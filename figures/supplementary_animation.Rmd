@@ -1,0 +1,156 @@
+---
+title: "Animation of Sinkhorn Transformation"
+output:
+  html_document:
+    df_print: paged
+    self_contained: yes
+---
+
+```{r}
+source("../R/setup.R")
+library(ggplot2)
+```
+
+```{r}
+set.seed(4)
+sim <- create_simulation(1000, 100, 3, with_marker_genes = T) %>% add_basis_samples()
+
+scaling <- sinkhorn_scale(sim$data, 10)
+proj <- svd_project(scaling, 1:3)
+
+plot_projection_points(proj, use_dims = 2:3)
+```
+
+
+# Sinkhorn research
+```{r}
+data <- sim$data
+data <- data / rowSums(data)
+svd_ <- svd(data)
+
+S <- t(svd_$u[, 2:3])
+R <- t(svd_$v[, 2:3])
+
+plot(data %*% t(R))
+plot(t(S %*% data))
+```
+
+```{r}
+prev_md <- min(colSums(sim$data))
+prev_mxd <- max(colSums(sim$data))
+for (i in 1:12) {
+  scaling <- sinkhorn_scale(sim$data, i)
+  v_column_sums <- colSums(scaling$V_row)
+  cur_md <- min(v_column_sums)
+  cur_mxd <- max(v_column_sums)
+  if (i != 1) {
+    plot(v_column_sums, ylim = c(prev_md, prev_mxd), pch = ".", cex = i)
+    title("After Scaling Step")
+    abline(h = cur_md, col = "red")
+    abline(h = nrow(sim$data) / ncol(sim$data), col = "blue")
+    abline(h = cur_mxd, col = "red")
+  }
+  plot(v_column_sums, ylim = c(cur_md, cur_mxd), pch = ".", cex = i)
+  title("Current Data Zoom")
+  abline(h = cur_md, col = "red")
+  abline(h = nrow(sim$data) / ncol(sim$data), col = "blue")
+  abline(h = cur_mxd, col = "red")
+  prev_md <- cur_md
+  prev_mxd <- cur_mxd
+  # plot(rowSums(scaling$V_column), ylim = c(0.745, 0.785), pch = ".")
+}
+plot(v_column_sums, ylim = c(cur_md, cur_mxd), pch = ".", cex = i)
+title("Final Result")
+plot(v_column_sums, ylim = c(cur_md, cur_mxd), pch = ".", cex = 1)
+title("Final Result with Small Points")
+```
+
+
+# Theory Demonstration
+```{r, fig.width=5, fig.height=5}
+to_plot <- proj$X[, 2:3]
+transform <- t(matrix(c(
+  c(1, 0),
+  c(0, 0.5)
+), nrow = 2))
+to_plot <- to_plot %*% transform
+to_plot <- as.data.frame(to_plot)
+ggplot(to_plot, aes(x = V1, y = V2)) + geom_point() + theme_minimal() + theme(
+  axis.title = element_blank(), panel.grid = element_blank(), axis.text = element_blank()
+) + xlim(c(-0.05, 0.05)) + ylim(-0.05, 0.05)
+```
+
+
+```{r}
+is_X <- F
+
+animated_data <- data.frame(V1 = numeric(), V2 = numeric(), step = integer())
+if (is_X) {
+  xs <- c(1, 1, 0.55, 0.9, 0.54, 0.8, 0.52, 0.7, 0.5)
+} else {
+  xs <- c(1, 0.5, 1, 0.53, 0.9, 0.52, 0.8, 0.51, 0.5)
+}
+
+if (is_X) {
+  limits <- c(-0.15, 0.15)
+  zero_y <- -0.009
+  zero_x <- -0.009
+  ax_len <- 0.135
+} else {
+  limits <- c(-0.05, 0.05)
+  zero_y <- -0.003
+  zero_x <- -0.003
+  ax_len <- 0.045
+}
+ax_width <- 0.07
+arr_ow <- arrow(length = unit(0.3, "cm"))
+seg <- function(length, angle) {
+  angle <- angle * (pi / 180)
+  xend <- zero_x + length * cos(angle)
+  yend <- zero_y + length * sin(angle)
+  return(aes(x = zero_x, y = zero_y, xend = xend, yend = yend))
+}
+
+for (i in seq_along(xs)) {
+  x <- xs[i]
+  if (is_X) {
+    to_plot <- proj$X[, 2:3]
+  } else {
+    to_plot <- proj$Omega[, 2:3]
+  }
+  transform <- t(matrix(c(1, 0, 0, 0.9 + (1 - 0.9) * i / length(xs)), nrow = 2))
+  noise <- matrix(rnorm(n = nrow(to_plot) * 2, mean = 1, sd = (x - 0.5) * 3), ncol = 2)
+  to_plot <- to_plot * noise
+  to_plot <- to_plot %*% transform
+  to_plot[, 1] <- pmax(limits[1], pmin(to_plot[, 1], limits[2]))
+  to_plot[, 2] <- pmax(limits[1], pmin(to_plot[, 2], limits[2]))
+  to_plot <- data.frame(to_plot, step = rep(i, nrow(to_plot)), point_id = rownames(to_plot))
+  animated_data <- rbind(animated_data, to_plot)
+}
+
+colnames(animated_data)[1:2] <- c("V1", "V2")
+
+animated_data$point_id <- as.factor(animated_data$point_id) # Ensure point_id is treated as a factor
+
+p <- ggplot(animated_data, aes(x = V1, y = V2, group = point_id)) +
+  geom_segment(seg(ax_len, 0), size = ax_width, col = "grey70") +
+  geom_segment(seg(ax_len, 90), size = ax_width, col = "grey70") +
+  geom_segment(seg(0.85*ax_len, 210), size = ax_width, col = "grey70") +
+  geom_segment(seg(0.85*ax_len, 20), size = ax_width, col = "grey70") +
+  geom_point() +
+  theme_minimal() +
+  theme(axis.title = element_blank(), panel.grid = element_blank(), axis.text = element_blank(), legend.position = "none") +
+  xlim(limits) + ylim(limits) +
+  transition_states(step, state_length = 3, transition_length = 1) +
+  ease_aes('exponential-in-out') +
+  labs(title = if (is_X) "X space, Sinkhorn step: {closest_state}" else "Omega space, Sinkhorn step: {closest_state}")
+
+animate(p, renderer = gifski_renderer(), height = 610, width = 600, duration = 20, fps = 25, end_pause = 10)
+if (is_X) {
+  anim_save("../out/sinkhorn_animation_x.gif")
+} else {
+  anim_save("../out/sinkhorn_animation_omega.gif")
+}
+```
+
+
