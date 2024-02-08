@@ -1,8 +1,346 @@
 ---
 title: "Figure 6G: Correlations between TCGA-HNSC deconvolution results and sample clinical features"
-output: html_document
+output:
+  html_document:
+    df_print: paged
+    self_contained: yes
 ---
 
+
 ```{r}
-plot(cars)
+source("../R/figure_utils.R")
+source("../R/setup.R")
+```
+
+```{r}
+save_dir <- "../out/linseed2_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
+```
+
+```{r}
+lo2 <- Linseed2Solver$from_state(save_dir, save_there = F)
+```
+
+```{r}
+library(ggplot2)
+library(MASS)
+
+clip <- function(x, lb, ub) {
+  x[x < lb] <- lb
+  x[x > ub] <- ub
+  return(x)
+}
+
+heatmap <- function(cormat) {
+  pheatmap::pheatmap(cormat, display_numbers = round(cormat, 1), cluster_rows = F, cluster_cols = F)
+}
+
+plot_by_ct <- function(geoms, x = NULL, fill = NULL, col = NULL, significance = F) {
+  for (coln in colnames(props)) {
+    show(plot_diff(geoms, coln, x, fill, col, significance))
+  }
+}
+
+plot_diff <- function(props_pheno, geoms, y = NULL, x = NULL, fill = NULL, col = NULL, significance = F, shift_brackets = NULL) {
+  if (!is.vector(geoms)) {
+    geoms <- c(geoms)
+  }
+  if (is.null(x)) {
+    ae <- aes_string(x=y, fill=fill, col=col)
+  } else {
+    ae <- aes_string(x=x, y=y, fill=fill, col=col)
+  }
+  props_pheno <- props_pheno[!is.na(props_pheno[, x]), ]
+  p <- ggplot(props_pheno, ae)
+  for (geom in geoms) {
+    p <- p + geom
+  }
+  if ((!is.null(col) && (x == col)) || (!is.null(fill) && (x == fill))) {
+    p <- p + theme(legend.position="none")
+  }
+  if (significance && !is.null(x)) {
+    stat_res <- stattest(props_pheno, x, y)
+    num_pwc_signif <- sum(stat_res$pairwise$p.adj.signif != "ns")
+    p <- p + labs(
+      subtitle = rstatix::get_test_label(stat_res$kruskal, detailed = TRUE),
+      caption = paste0(rstatix::get_pwc_label(stat_res$pairwise, type="text"), "; significant differences: ", num_pwc_signif) 
+    )
+    if (num_pwc_signif < 20) {
+      p <- p + ggpubr::stat_pvalue_manual(stat_res$pairwise, hide.ns = T, bracket.nudge.y = shift_brackets)
+    }
+  }
+  p
+}
+
+stattest <- function(props_pheno, x, y) {
+  f <- as.formula(paste(y, x, sep=" ~ "))
+  res.kruskal <- props_pheno %>% rstatix::kruskal_test(f)
+  pwc <- props_pheno %>% rstatix::dunn_test(f, p.adjust.method = "bonferroni") 
+  pwc <- pwc %>% rstatix::add_xy_position(x = x)
+  return(list(pairwise = pwc, kruskal = res.kruskal))
+}
+
+boxplot_by_ct <- function(var, fill = var, significance = F) {
+  if (significance) fill <- NULL
+  plot_by_ct(c(geom_boxplot(), geom_jitter(height=0.01, width=0.03)), x=var, fill=fill, significance = significance)
+}
+```
+
+```{r}
+patient_data <- read.csv(
+  "../data/HNSC/clinical/nationwidechildrens.org_clinical_patient_hnsc.txt",
+  sep = "\t"
+)
+patient_data <- patient_data[3:nrow(patient_data),]
+rownames(patient_data) <- patient_data$bcr_patient_barcode
+
+sample_data <- read.csv(
+  "../data/HNSC/biomedical/nationwidechildrens.org_biospecimen_sample_hnsc.txt",
+  sep = "\t"
+)
+rownames(sample_data) <- sample_data$bcr_sample_barcode
+
+sample_barcodes <- gsub("-\\w+-\\w+-\\w+$", "", colnames(lo2$get_data()))
+patient_barcodes <- gsub("-\\w+$", "", sample_barcodes)
+
+sample_data <- sample_data[sample_barcodes, ]
+patient_data <- patient_data[patient_barcodes, ]
+
+sample_data <- cbind(sample_data, patient_data)
+rownames(sample_data) <- colnames(lo2$get_data())
+
+sample_data <- sample_data[, apply(sample_data, 2, function(x) { length(unique(x)) != 1 })]
+sample_data <- sample_data[, grep("(_uuid|_barcode|\\.\\d)$", colnames(sample_data), invert = T)]
+```
+
+```{r}
+basis <- as.data.frame(lo2$get_solution()$W)
+props <- as.data.frame(t(lo2$get_solution()$H))
+props <- clip(props, 0, 1)
+cell_types <- lo2$get_ct_names()
+```
+
+
+```{r}
+props_pheno <- cbind(sample_data, props)
+rownames(props_pheno) <- rownames(sample_data)
+numeric_cols <- c(
+  "birth_days_to",
+  "lymph_nodes_examined_count",
+  "death_days_to",
+  "tobacco_smoking_pack_years_smoked",
+  "age_at_initial_pathologic_diagnosis",
+  "initial_weight",
+  "last_contact_days_to",
+  "days_to_collection"
+)
+factor_cols <- c(
+  "sample_type", "anatomic_organ_subdivision",
+  "gender", "race", "ethnicity", "history_other_malignancy",
+  "lymph_node_neck_dissection_indicator", "lymph_node_dissection_method",
+  "lymph_nodes_examined", "margin_status", "vital_status", "tumor_status",
+  "ajcc_pathologic_tumor_stage", "extracapsular_spread_pathologic",
+  "tumor_grade", "lymphovascular_invasion", "perineural_invasion",
+  "radiation_treatment_adjuvant", "treatment_outcome_first_course",
+  "new_tumor_event_dx_indicator", "clinical_stage", "hpv_status_p16", "egfr_amplification_status",
+  "tissue_source_site", "pharmaceutical_tx_adjuvant", "alcohol_consumption_frequency"
+)
+
+props_pheno[props_pheno == "[Not Available]"] = NA
+props_pheno[props_pheno == "[Not Applicable]"] = NA
+props_pheno[props_pheno == "[Not Evaluated]"] = NA
+props_pheno[props_pheno == "[Unknown]"] = NA
+props_pheno[props_pheno == "[Discrepancy]"] = NA
+props_pheno[props_pheno == "[Completed]"] = NA
+
+props_pheno <- props_pheno[, c(factor_cols, numeric_cols, cell_types)]
+
+col_counts <- sapply(props_pheno, function(x) length(unique(x)))
+props_pheno[col_counts < 2] <- NULL
+
+props_pheno[factor_cols] <- lapply(props_pheno[factor_cols], as.factor)
+props_pheno[numeric_cols] <- lapply(props_pheno[numeric_cols], as.integer)
+
+numeric_features <- numeric_cols
+factor_features <- factor_cols
+```
+
+```{r}
+# Custom tweaks
+props_pheno$alcohol_consumption_frequency <- as.character(props_pheno$alcohol_consumption_frequency)
+props_pheno$alcohol_consumption_frequency[
+  props_pheno$alcohol_consumption_frequency == "2" | 
+    props_pheno$alcohol_consumption_frequency == "2.5"
+] <- "2-2.5"
+props_pheno$alcohol_consumption_frequency[
+  props_pheno$alcohol_consumption_frequency == "3" |
+    props_pheno$alcohol_consumption_frequency == "4"
+] <- "3-4"
+props_pheno$alcohol_consumption_frequency[
+  props_pheno$alcohol_consumption_frequency == "5" |
+    props_pheno$alcohol_consumption_frequency == "6"
+] <- "5-6"
+props_pheno$alcohol_consumption_frequency <- as.factor(props_pheno$alcohol_consumption_frequency)
+```
+
+
+# Filter bad data and small cohorts
+```{r}
+# NA percentages
+colSums(apply(props_pheno[, numeric_features], 2, is.na)) / nrow(props_pheno)
+```
+
+```{r}
+# Small cohorts: run multiple times until no plots left
+small_cohort_count_threshold <- 6
+
+has_small_cohorts <- apply(props_pheno[, factor_cols], 2, function(x) {
+  min(table(x)) < small_cohort_count_threshold
+})
+has_small_cohorts <- names(has_small_cohorts)[has_small_cohorts]
+
+for (colname in has_small_cohorts) {
+  show(ggplot(props_pheno, aes_string(x=colname)) + geom_histogram(stat="count"))
+  to_remove <- table(props_pheno[, colname]) < small_cohort_count_threshold
+  to_remove <- names(to_remove)[to_remove]
+  props_pheno <- props_pheno[!(props_pheno[, colname] %in% to_remove), ]
+  show(ggplot(props_pheno, aes_string(x=colname)) + geom_histogram(stat="count"))
+}
+nrow(props_pheno)
+```
+
+# Turn numeric features into quantiles
+```{r}
+n_q <- 5
+quantile_cols <- apply(props_pheno[, numeric_features], 2, function(col) as.factor(ntile(col, n_q)))
+q_features <- paste0("Q_", numeric_features)
+colnames(quantile_cols) <- q_features
+props_pheno[, q_features] <- quantile_cols
+factor_cols <- c(factor_cols, q_features)
+
+for (feat in q_features) {
+  show(ggplot(props_pheno, aes_string(x = feat, y = substr(feat, 3, stringr::str_length(feat)))) + geom_boxplot())
+}
+```
+
+# Check categorical features correlation
+```{r fig.width=40, fig.height=20}
+to_plot <- props_pheno[, c(cell_types, small_factor_cols)] %>%
+  tidyr::pivot_longer(cell_types, names_to="cell_type", values_to="cell_type_proportion") %>%
+  tidyr::pivot_longer(small_factor_cols, names_to="feature", values_to="feature_value")
+
+ggplot(to_plot, aes(x = feature_value, y = cell_type_proportion)) +
+  geom_boxplot(outlier.alpha = 0) +
+  geom_jitter(height=0.01, width=0.03, size=0.3, alpha = 0.8) +
+  facet_grid(rows = vars(cell_type), cols = vars(feature), scales = "free") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+# Select features
+```{r}
+# Meaningful features
+# m_q_features <- c("Q_initial_weight", "Q_lymph_nodes_examined_count", "Q_tobacco_smoking_pack_years_smoked")
+# m_numeric_features <- substring(m_q_features, 3)
+# m_factor_features <- c(
+#   "ajcc_pathologic_tumor_stage", "anatomic_organ_subdivision", "clinical_stage",
+#   "extracapsular_spread_pathologic", "gender", "hpv_status_p16",
+#   "margin_status", "perineural_invasion", "radiation_treatment_adjuvant",
+#   "sample_type", "tumor_grade"
+# )
+# m_features <- c(m_q_features, m_numeric_features, m_factor_features)
+
+props_pheno$tobacco_smoking <- props_pheno$Q_tobacco_smoking_pack_years_smoked
+m_q_features <- c(
+  "Q_lymph_nodes_examined_count", 
+  "tobacco_smoking"
+)
+m_numeric_features <- substring(m_q_features, 3)
+m_factor_features <- c(
+  "anatomic_organ_subdivision",
+  "extracapsular_spread_pathologic",
+  "gender",
+  "hpv_status_p16",
+  "perineural_invasion",
+  "sample_type",
+  "tumor_grade"
+)
+m_features <- c(m_q_features, m_numeric_features, m_factor_features)
+
+m_cell_types <- c("cell_type_1", "cell_type_3")
+```
+
+```{r fig.width=12, fig.height=4}
+to_test <- props_pheno
+to_test[, m_cell_types] <- apply(to_test[, m_cell_types], 2, function(x) pmin(x, 1))
+to_test[, m_cell_types] <- apply(to_test[, m_cell_types], 2, function(x) pmax(x, 0))
+
+to_plot <- to_test %>%
+  tidyr::pivot_longer(m_cell_types, names_to="cell_type", values_to="cell_type_proportion") %>%
+  tidyr::pivot_longer(c(m_factor_features, m_q_features), names_to="feature", values_to="feature_value")
+
+ggplot(to_plot, aes(x = feature_value, y = cell_type_proportion)) +
+  geom_boxplot(outlier.alpha = 0) +
+  geom_jitter(height=0.01, width=0.03, size=0.3, alpha = 0.8) +
+  facet_grid(rows = vars(cell_type), cols = vars(feature), scales = "free") + 
+  theme_bw() +
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+# Check significance
+```{r}
+to_test <- props_pheno
+```
+
+```{r, fig.width=2.2, fig.height=2}
+scaleFUN <- function(x) sprintf("%.2f", x)
+plots <- list()
+for (feature in c("hpv_status_p16", "tumor_grade")) {
+  for (ct in m_cell_types) {
+    to_test_ <- to_test[!is.na(to_test[, feature]), ]
+    stat_res <- stattest(to_test_, feature, ct)
+    num_pwc_signif <- sum(stat_res$pairwise$p.adj.signif != "ns")
+    lim <- if (ct == "cell_type_1") {
+      
+    }
+    plots[[paste(feature, ct)]] <- ggplot(to_test_, aes_string(x = feature, y = ct)) +
+      geom_boxplot(outlier.size = 0.5) +
+      geom_jitter(height=0.01, width=0.03, size = 0.1) +
+      theme_bw() +
+      theme(
+        #axis.text.x = element_blank(),
+        axis.text.y = element_text(size = 12),
+        #axis.title.x = element_blank(),
+        #axis.title.y = element_blank(),
+      ) + ggpubr::stat_pvalue_manual(
+        stat_res$pairwise %>% slice_min(order_by = p.adj, n = 1, with_ties = T), hide.ns = T
+      ) + scale_y_continuous(labels = scaleFUN)
+    show(plots[[paste(feature, ct)]])
+  }
+}
+```
+```{r}
+for (fname in names(plots)) {
+  ggsave(
+    file.path("../out", paste0("6g ", fname, ".svg")),
+    plot = plots[[fname]],
+    device = svg,
+    width = 2,
+    height = 2
+  )
+}
+```
+
+```{r}
+plot_diff(
+    to_test,
+    c(
+      geom_boxplot(),
+      geom_jitter(height=0.01, width=0.03)
+    ),
+    y="cell_type_3",
+    x="tumor_grade",
+    significance = T,
+    shift_brackets = 0
+)
 ```
