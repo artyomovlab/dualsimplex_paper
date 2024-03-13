@@ -1,0 +1,257 @@
+---
+title: "Supplementary Figure 2: Further analysis of TCGA-HNSC deconvolution results"
+output:
+  html_document:
+    df_print: paged
+    self_contained: yes
+---
+
+
+```{r}
+source("../R/figure_utils.R")
+source("../R/setup.R")
+library(Seurat)
+```
+
+```{r}
+save_dir <- "../out/linseed2_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
+```
+
+```{r}
+lo2 <- Linseed2Solver$from_state(save_dir, save_there = F)
+```
+
+
+# Gene set enrichment
+```{r}
+library(msigdbr)
+```
+
+```{r}
+msigdbr_df <- rbind(
+  msigdbr(species = "Homo sapiens", category = "H"),
+  msigdbr(species = "Homo sapiens", category = "C2", "CGP"),
+  msigdbr(species = "Homo sapiens", category = "C5", "GO:CC"),
+  msigdbr(species = "Homo sapiens", category = "C5", "GO:BP")
+)
+
+msigdbr_t2g <- msigdbr_df %>% dplyr::distinct(gs_name, gene_symbol) %>% as.data.frame()
+
+# Number of unique gene sets analysed
+length(unique(msigdbr_t2g$gs_name))
+```
+
+```{r}
+enrichment_res_tmp <- list()
+for (ct in lo2$get_ct_names()) {
+  
+  # For some classic cell types we want only most common gene sets
+  if (ct == "cell_type_1") {
+    # Macrophages
+    this_msigdbr_t2g <- msigdbr_t2g[startsWith(msigdbr_t2g$gs_name, "HALLMARK_"), ]
+  } else if (ct == "cell_type_2" || ct == "cell_type_7") {
+    # Myocytes and fibroblasts
+    this_msigdbr_t2g <- msigdbr_t2g[startsWith(msigdbr_t2g$gs_name, "HALLMARK_") | startsWith(msigdbr_t2g$gs_name, "GO_"), ]
+  } else {
+    this_msigdbr_t2g <- msigdbr_t2g
+  }
+  
+  enrichment <- clusterProfiler::enricher(
+    gene = lo2$get_marker_genes()[[ct]],
+    TERM2GENE = this_msigdbr_t2g,
+    minGSSize = 15,
+    maxGSSize = 500
+  )
+  enrichment <- as.data.frame(enrichment)
+  enrichment$ct <- ct
+  enrichment_res_tmp[[ct]] <- enrichment
+}
+
+enrichment_res <- do.call(rbind, enrichment_res_tmp)
+enrichment_res$GeneRatio <- sapply(enrichment_res$GeneRatio, function(x) eval(parse(text=x)))
+
+# Number of unique pathways
+length(unique(enrichment_res$ID))
+
+# Number of enrichments
+nrow(enrichment_res)
+```
+
+```{r}
+# To continue the long operation
+# saveRDS(enrichment_res, "../out/enrichment.rds")
+# enrichment_res <- readRDS("../out/enrichment.rds")
+```
+
+
+```{r}
+# Filter by pvalue
+padj_threshold <- 0.01
+significant_pw <- (enrichment_res %>%
+  group_by(ID) %>%
+  summarise(interesting = any(!is.na(p.adjust) & (p.adjust < padj_threshold)), .groups = "drop") %>%
+  filter(interesting))$ID
+significant_enrichment_res <- enrichment_res[enrichment_res$ID %in% significant_pw, ]
+
+# Number of unique pathways
+length(significant_pw)
+
+# Number of enrichments
+nrow(significant_enrichment_res)
+```
+
+```{r}
+top_n_pw_per_ct <- 10
+top_pw <- unique((
+  significant_enrichment_res %>%
+    group_by(ct) %>%
+    filter(!is.na(p.adjust) & (p.adjust < padj_threshold)) %>%
+    slice_min(p.adjust, n = top_n_pw_per_ct, with_ties = T)
+)$ID)
+top_enrichment_res <- significant_enrichment_res[significant_enrichment_res$ID %in% top_pw, ]
+
+# Total number of top pathways
+length(top_pw)
+```
+
+
+First, we take top 10 pathways per cell type (there are some intersection)
+```{r, fig.height=10, fig.width=10}
+to_plot <- top_enrichment_res
+to_plot[is.na(to_plot$padj), "padj"] <- 1
+to_plot$ct <- as.factor(to_plot$ct)
+
+to_plot$ID <- factor(to_plot$ID, levels = rev(top_pw))
+
+ggplot(to_plot, aes(x = ct, y = ID, size = GeneRatio)) +
+  geom_point(aes(color=-log10(p.adjust))) +
+  scale_color_steps(low = "grey80", high = "black") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+Then, we manually select the most interesting ones
+```{r, fig.height=7, fig.width=9}
+select_pw <- c(
+  "HALLMARK_INTERFERON_GAMMA_RESPONSE", #1
+  "HALLMARK_INTERFERON_ALPHA_RESPONSE", #2
+  "HALLMARK_ALLOGRAFT_REJECTION", #3
+  
+  "GO_CONTRACTILE_FIBER", #4
+  "GO_MUSCLE_CONTRACTION", #5
+  "HALLMARK_MYOGENESIS", #6
+  
+  "SENGUPTA_NASOPHARYNGEAL_CARCINOMA_DN", #7
+  "GO_MOTILE_CILIUM", #8
+  "GO_CILIUM_ORGANIZATION", #9
+  "RICKMAN_HEAD_AND_NECK_CANCER_D", #10
+  
+  "GO_RESPONSE_TO_XENOBIOTIC_STIMULUS", #11
+  "HALLMARK_XENOBIOTIC_METABOLISM", #12
+  "GO_UNSATURATED_FATTY_ACID_METABOLIC_PROCESS", #13
+  
+  "RICKMAN_HEAD_AND_NECK_CANCER_A", #14
+  "PYEON_HPV_POSITIVE_TUMORS_UP", #15
+  "SLEBOS_HEAD_AND_NECK_CANCER_WITH_HPV_UP", #16
+  
+  "RICKMAN_HEAD_AND_NECK_CANCER_E", #17
+  "LIN_SILENCED_BY_TUMOR_MICROENVIRONMENT", #18
+  "HOLLERN_SQUAMOUS_BREAST_TUMOR", #19
+  
+  "GO_EXTRACELLULAR_STRUCTURE_ORGANIZATION", #20
+  "HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION", #21
+  "GO_COLLAGEN_CONTAINING_EXTRACELLULAR_MATRIX", #22
+  
+  "GO_KERATINIZATION", #23
+  "GO_CORNIFICATION", #24
+  "GO_CORNIFIED_ENVELOPE", #25
+  "RICKMAN_HEAD_AND_NECK_CANCER_C", #26
+  
+  "RICKMAN_TUMOR_DIFFERENTIATED_WELL_VS_POORLY_DN", #27
+  "BILD_HRAS_ONCOGENIC_SIGNATURE", #28
+  "WU_CELL_MIGRATION", #29
+  "GHANDHI_DIRECT_IRRADIATION_UP" #30
+)
+to_plot_sele <- to_plot[to_plot$ID %in% select_pw, ]
+to_plot_sele$ID <- gsub("HALLMARK_", "H_", to_plot_sele$ID)
+select_pw <- gsub("HALLMARK_", "H_", select_pw)
+to_plot_sele$ID <- factor(to_plot_sele$ID, levels = select_pw)
+to_plot_sele$ct <- factor(to_plot_sele$ct, levels = sort(unique(to_plot_sele$ct), decreasing = F))
+```
+
+
+```{r, fig.height=2.5, fig.width=5.5}
+plt <- ggplot(to_plot_sele, aes(x = ID, y = ct, size = GeneRatio)) +
+  geom_point(aes(color=-log10(p.adjust))) +
+  scale_color_steps(low = "grey80", high = "black") +
+  scale_size_continuous(range = c(1, 4)) +
+  theme(
+    axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = .5, size = 7),
+    axis.text.y = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    legend.title = element_text(size = 8),
+    legend.key.size = unit(0.3, "cm"),
+    axis.title.y.left = element_text(size = 8, margin = margin(r = 5)),
+    legend.position = "right",
+    plot.margin = margin(t = 35, b = 35)
+  ) +
+  labs(x = NULL, y = "Cell Type") +
+  scale_y_discrete(labels = 9:1) +
+  scale_x_discrete(labels = 1:length(select_pw))
+ggsave(file="../out/s2_pathways_bw.svg", plot=plt, width=5.5, height=2.5, device = svg)
+plt
+```
+
+```{r, fig.height=4.2, fig.width=5.5}
+plt <- ggplot(to_plot_sele, aes(x = ID, y = ct, size = GeneRatio)) +
+  geom_point(aes(alpha=-log10(p.adjust), col = ct)) +
+  scale_alpha(range = c(0.2, 1)) +
+  scale_size_continuous(range = c(1, 4)) +
+  theme(
+    axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = .5, size = 7),
+    axis.text.y = element_text(size = 9),
+    legend.text = element_text(size = 8),
+    legend.title = element_text(size = 8),
+    legend.key.size = unit(0.3, "cm"),
+    axis.title.y.left = element_text(size = 8, margin = margin(r = 5)),
+    legend.position = "right",
+    plot.margin = margin(t = 100, b = 100)
+  ) +
+  labs(x = NULL, y = "Cell Type") +
+  scale_y_discrete(labels = 1:9) +
+  scale_x_discrete(labels = 1:length(select_pw))
+
+ggsave(file="../out/s2_pathways_colored.svg", plot=plt, width=5.5, height=4.2, device = svg)
+plt
+```
+
+
+
+# Typical genes
+```{r fig.width=4.5, fig.height=10}
+basis <- lo2$get_solution()$W
+
+# Min-max scaling for display, like in phantasus
+basis <- as.data.frame(t(apply(basis, 1, function(x) (x - min(x)) / (max(x) - min(x)))))
+
+sele <- c(
+  "IFNG", "GBP5", "BATF2", "CXCL11", "FASLG", # ct1
+  "ACTA1", "MYL1", "CKM", "MB", # ct2
+  "SCGB3A1", "LYZ", "CDHR4", "AGR3", # ct3
+  "AKR1C1", "GSTM1", "CYP4F11", "UGT1A1", # ct4
+  "PAX1", "VCAM1", "SSTR2", "IL1R2", # ct5 — HPV
+  "MUC21", "MAL", "CRNN", "SPRR3", "KRT13", # ct6 - squamous cells
+  "COL1A1", "POSTN", "FAP", "SPARC", "FN1", # ct7 - fibroblasts
+  "KRTDAP", "LCE3D", "LCE3E", "LCE3A", # ct8 - late cornified epithelium
+  "CA9", "AREG", "CSF3", "FST" # ct9 — agressive cancer
+)
+colnames(basis) <- seq(1, ncol(basis))
+plt <- pheatmap::pheatmap(
+  basis[sele, ],
+  cluster_rows = F,
+  cluster_cols = F, 
+  color = colorRampPalette(c("blue", "white", "red"))(100),
+  legend = F
+)
+ggsave("../out/s2_typical_genes.svg", plt, width = 4.5, height = 10, device = svg)
+plt
+```

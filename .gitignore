@@ -1,3 +1,13 @@
 /output_figures/
 /figures/signature_based_7a/data_used/
 *.html
+
+out/
+data/
+
+.idea/
+.Rproj.user/
+*.Rproj
+.Rhistory
+.RData
+.Ruserdata
