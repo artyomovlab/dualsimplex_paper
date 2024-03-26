@@ -9,7 +9,7 @@ output: html_document
 # path to save everything
 dir_to_save_fig <-  "../out/GSE19830/"
 dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
-source("../figure_utils.R") # for same colors
+source("../R/figure_utils.R") # for same colors
 ```
 
 ## Dependencies
