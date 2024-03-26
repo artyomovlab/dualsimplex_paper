@@ -15,11 +15,36 @@ source("../R/figure_utils.R") # for same colors
 ## Dependencies
 
 ```{r}
+if (!require("hgu133plus2.db", quietly = TRUE))
+  BiocManager::install("hgu133plus2.db")
+if (!require("ComplexHeatmap", quietly = TRUE))
+  BiocManager::install("ComplexHeatmap")
+if (!require("nnls", quietly = TRUE))
+  install.packages("nnls")
+if (!require("irlba", quietly = TRUE))
+  install.packages("irlba")
+if (!require("reshape", quietly = TRUE))
+  install.packages("reshape")
+if (!require("linseed", quietly = TRUE))
+  install.packages("linseed")
+if (!require("linseed", quietly = TRUE))
+  devtools::install_github("ctlab/linseed")
+
 library('GEOquery')
 library(biomaRt)
-library(matrixStats)
+library(hgu133plus2.db)
 library(ComplexHeatmap)
 library(progress)
+library(reshape)
+library(plotly)
+library(ggrastr)
+library(ggpubr)
+library(linseed)
+
+
+library(matrixStats)
+library(ComplexHeatmap)
+
 ```
 
 ## Package
@@ -346,8 +371,8 @@ plot_ptb_scatter(ptb)
 Visualize the same as lines
 
 ```{r fig.height = 5, fig.width = 7}
-ptp_lines <-  linseed::plotProportions(ptp[[1]], 
-                                       ptp[[2]], 
+ptp_lines <-  linseed::plotProportions(as.data.frame(ptp[[1]]), 
+                                       as.data.frame(ptp[[2]]), 
                                        pnames = c("predicted", "true"),
                                        point_size = 1,
                                        line_size = 0.7
