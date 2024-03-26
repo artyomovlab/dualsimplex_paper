@@ -1,4 +1,5 @@
-*.html
+/output_figures/
+/figures/signature_based_7a/data_used/
 out/
 data/
 .idea/
@@ -8,4 +9,3 @@ data/
 .Rhistory
 .RData
 .Ruserdata
-
