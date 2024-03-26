@@ -162,17 +162,17 @@ length(PROTEIN_CODING_GENES)
 ## Create lo2 object and prefilter
 
 ```{r}
-lo2 <- Linseed2Solver$new()
-lo2$set_data(data_raw, gene_anno_lists=list(CODING = PROTEIN_CODING_GENES))
+dso <- DualSimplexSolver$new()
+dso$set_data(data_raw, gene_anno_lists=list(CODING = PROTEIN_CODING_GENES))
 # remove "RPLS", "LOC", "ORF", "SNOR", keep coding only
-lo2$basic_filter( keep_true_cols = c("CODING"))
-lo2$project(n_ct)
-print(paste("Dim for the prefiltered data data:", toString(dim(lo2$get_data()))))
+dso$basic_filter( keep_true_cols = c("CODING"))
+dso$project(n_ct)
+print(paste("Dim for the prefiltered data data:", toString(dim(dso$get_data()))))
 ```
 
 ```{r fig.height = 5, fig.width = 11}
-lo2$plot_svd(dims=1:15)
-lo2$plot_projected("zero_distance", "zero_distance", use_dims = list(3:4))
+dso$plot_svd(dims=1:15)
+dso$plot_projected("zero_distance", "zero_distance", use_dims = list(3:4))
 ```
 
 ## Additional filters
@@ -183,7 +183,7 @@ check distribution of median absolute deviation to see which genes will be delet
 
 ```{r}
 dummy_threshold <-  2.5
-data <-  lo2$get_data()
+data <-  dso$get_data()
 anno <-  get_anno(data)
 anno$PASS_FILTER <-  FALSE
 anno[anno$log_mad > dummy_threshold,]$PASS_FILTER <-  TRUE
@@ -194,11 +194,11 @@ plot_feature(data, feature = "log_mad", col_by ='PASS_FILTER')
 Filter the data with selected threshold
 
 ```{r fig.height = 4, fig.width=14}
-lo2$basic_filter(log_mad_gt = dummy_threshold, )
-lo2$project(n_ct)
+dso$basic_filter(log_mad_gt = dummy_threshold, )
+dso$project(n_ct)
 
-svd_plot_2 <- lo2$plot_svd(1:10) + theme_minimal(base_size = 8)
-points_2 <-  lo2$plot_projected("black", "black",use_dims = 2:3, show_plots=F) +  theme_minimal(base_size = 8)
+svd_plot_2 <- dso$plot_svd(1:10) + theme_minimal(base_size = 8)
+points_2 <-  dso$plot_projected("black", "black",use_dims = 2:3, show_plots=F) +  theme_minimal(base_size = 8)
 plotlist = list(points_2, svd_plot_2)
 cowplot::plot_grid(plotlist=plotlist, rel_widths = c(0.66, 0.33)) 
 ```
@@ -206,7 +206,7 @@ cowplot::plot_grid(plotlist=plotlist, rel_widths = c(0.66, 0.33))
 Repeat previous cell with increasing thresholds to observe how SVD singular values will change. (in a perfect case should see only n_ct non-zero singular values)
 
 ```{r}
-lo2$plot_svd_history()
+dso$plot_svd_history()
 ```
 
 ### Denoising the data
@@ -214,11 +214,11 @@ lo2$plot_svd_history()
 Plot distance of genes from the projection hyperplane
 
 ```{r fig.height = 4, fig.width=14}
-distance_dist_plot_noizy <- plot_feature(lo2$get_data(), feature = "plane_distance") + theme_minimal(base_size = 15)
-color = fData(lo2$get_data())$plane_distance
-X_points_noizy <-  plot_projection_points(lo2$st$proj, use_dims=2:3,color=color,color_name="plane_distance", spaces = c("X"), pt_size = 2) + theme_minimal(base_size = 15)
+distance_dist_plot_noizy <- plot_feature(dso$get_data(), feature = "plane_distance") + theme_minimal(base_size = 15)
+color = fData(dso$get_data())$plane_distance
+X_points_noizy <-  plot_projection_points(dso$st$proj, use_dims=2:3,color=color,color_name="plane_distance", spaces = c("X"), pt_size = 2) + theme_minimal(base_size = 15)
 
-distances_distribution <-   plot_feature_pair(lo2$get_data(), "plane_distance", "zero_distance", T, size = 0.1)
+distances_distribution <-   plot_feature_pair(dso$get_data(), "plane_distance", "zero_distance", T, size = 0.1)
 
 
 plotlist = list( X_points_noizy, distance_dist_plot_noizy, distances_distribution)
@@ -229,15 +229,15 @@ cowplot::plot_grid(plotlist=plotlist, nrow = 1, rel_widths = c(0.4, 0.3, 0.3))
 Remove genes which are to far from projection hyperplane and zero point
 
 ```{r}
-lo2$distance_filter(plane_d_lt = 0.19, zero_d_lt = 0.3, genes = T)
-lo2$project(n_ct)
+dso$distance_filter(plane_d_lt = 0.19, zero_d_lt = 0.3, genes = T)
+dso$project(n_ct)
 ```
 
 Color points by distance
 
 ```{r fig.height = 4, fig.width=14}
-current_svd_plot <- lo2$plot_svd(1:10) + theme_minimal(base_size = 8)
-current_points_plot <-  lo2$plot_projected("plane_distance", "plane_distance",use_dims = 2:3, show_plots=F) +  theme_minimal(base_size = 8)
+current_svd_plot <- dso$plot_svd(1:10) + theme_minimal(base_size = 8)
+current_points_plot <-  dso$plot_projected("plane_distance", "plane_distance",use_dims = 2:3, show_plots=F) +  theme_minimal(base_size = 8)
 plotlist = list(current_points_plot, current_svd_plot)
 cowplot::plot_grid(plotlist=plotlist, rel_widths = c(0.66, 0.33)) 
 ```
@@ -245,7 +245,7 @@ cowplot::plot_grid(plotlist=plotlist, rel_widths = c(0.66, 0.33))
 Repeat previous cell with decreasing thresholds to observe how SVD singular values and coloring will change. (in a perfect case should see only n_ct non-zero singular values)
 
 ```{r}
-lo2$plot_svd_history()
+dso$plot_svd_history()
 ```
 
 ## Make umap in advance for visualization purposes
@@ -254,8 +254,8 @@ since we have 3-dimensional simplex it is hard to visualize it in 2D. In practic
 
 ```{r}
 set.seed(23)
-lo2$run_umap(neighbors_X = 25, neighbors_Omega = 5)
-lo2$plot_projected("zero_distance", "zero_distance", use_dims = NULL)
+dso$run_umap(neighbors_X = 25, neighbors_Omega = 5)
+dso$plot_projected("zero_distance", "zero_distance", use_dims = NULL)
 ```
 
 ## Finaly train the model
@@ -265,11 +265,11 @@ lo2$plot_projected("zero_distance", "zero_distance", use_dims = NULL)
 ```{r}
 #set.seed(72)
 set.seed(33)
-lo2$init_solution("random")
+dso$init_solution("random")
 # original space
-lo2$plot_projected("zero_distance", "zero_distance", use_dims = c(3:4))
+dso$plot_projected("zero_distance", "zero_distance", use_dims = c(3:4))
 # umap visualization
-lo2$plot_projected("zero_distance", "zero_distance", use_dims = NULL)
+dso$plot_projected("zero_distance", "zero_distance", use_dims = NULL)
 ```
 
 ### Train multiple times with changing hyperparameters
@@ -296,7 +296,7 @@ for  (lr_step in 1:LR_DECAY_STEPS) {
     beta_term <- original_beta_term
       for (x in 1:PARAMETERS_INCREASE_STEPS) {
         pb$tick()
-        lo2$optim_solution(RUNS_EACH_STEP, 
+        dso$optim_solution(RUNS_EACH_STEP, 
                            optim_config(coef_hinge_H = lambda_term,
                                         coef_hinge_W =beta_term,
                                         coef_der_X = lr_x, 
@@ -314,7 +314,7 @@ for  (lr_step in 1:LR_DECAY_STEPS) {
 ### Plot errors
 
 ```{r}
-plot_errors(lo2$st$solution_proj,   variables = c(
+plot_errors(dso$st$solution_proj,   variables = c(
     "deconv_error",
     "lamdba_error",
     "beta_error",
@@ -347,7 +347,7 @@ plotErrorsWithRastr = function(metadata, variables = c("deconv_error","lamdba_er
   return(plt)
     }
 
-errors_plot <- plotErrorsWithRastr(lo2, variables = c("deconv_error",
+errors_plot <- plotErrorsWithRastr(dso, variables = c("deconv_error",
                                  "lamdba_error",
                                  "beta_error",
                                  "total_error")) + 
@@ -360,12 +360,12 @@ ggsave(file=filename, plot=errors_plot, width=5, height=3, device=svg)
 ### History of solution
 
 ```{r fig.width=5, fig.height=5}
-colnames(lo2$st$proj$X) <- c("R1", "R2", "R3", "R4")
-colnames(lo2$st$proj$Omega) <- c("S1", "S2", "S3", "S4")
-colnames(lo2$st$proj$umap$X)  <- c("UMAP1", "UMAP2")
-colnames(lo2$st$proj$umap$Omega)  <- c("UMAP1", "UMAP2")
+colnames(dso$st$proj$X) <- c("R1", "R2", "R3", "R4")
+colnames(dso$st$proj$Omega) <- c("S1", "S2", "S3", "S4")
+colnames(dso$st$proj$umap$X)  <- c("UMAP1", "UMAP2")
+colnames(dso$st$proj$umap$Omega)  <- c("UMAP1", "UMAP2")
 
-proj_solution_history <- lo2$plot_projected(use_dims = (2:3), wrap=F, with_legend = F)
+proj_solution_history <- dso$plot_projected(use_dims = (2:3), wrap=F, with_legend = F)
 proj_solution_history[[1]] # genes in a space of samples
 proj_solution_history[[2]] # samples in a space of genes
 ```
@@ -373,7 +373,7 @@ proj_solution_history[[2]] # samples in a space of genes
 Use UMAP and decorate it how it was done in the paper
 
 ```{r}
-umap_solution_history <- lo2$plot_projected("zero_distance", "zero_distance", wrap=F, with_legend = F, use_dims = NULL)
+umap_solution_history <- dso$plot_projected("zero_distance", "zero_distance", wrap=F, with_legend = F, use_dims = NULL)
 pltX <- umap_solution_history[[1]] + 
   scale_fill_manual(values = colors_v[3:6]) + 
   theme_minimal(base_size=12) +
@@ -396,7 +396,7 @@ ggarrange(pltX, pltOmega)
 Get solution (W and H)
 
 ```{r}
-solution <- lo2$finalize_solution()
+solution <- dso$finalize_solution()
 names(solution)
 #solution <- lo2$get_solution()
 ```
@@ -434,9 +434,9 @@ ptp_lines
 
 ```{r fig.height = 5, fig.width = 11}
 
-markers  <- lo2$get_marker_genes()
+markers  <- dso$get_marker_genes()
 to_plot <- data_raw[unlist(markers), apply(true_proportions, 2, function(x) any(x == 1))]
-lo2$plot_projected(rownames(to_plot), use_dims = (2:3))
+dso$plot_projected(rownames(to_plot), use_dims = (2:3))
 ```
 
 ### More decorated markers plot (as it is in the paper)
@@ -444,8 +444,8 @@ lo2$plot_projected(rownames(to_plot), use_dims = (2:3))
 #### Visualize with UMAP
 
 ```{r}
-colors <-  which_marker(rownames(fData(lo2$st$data)), lo2$st$marker_genes)
-plot_projection_points(lo2$st$proj, use_dims = NULL, spaces = c("X"), pt_size = 2, color=colors) +
+colors <-  which_marker(rownames(fData(dso$st$data)), dso$st$marker_genes)
+plot_projection_points(dso$st$proj, use_dims = NULL, spaces = c("X"), pt_size = 2, color=colors) +
   scale_color_manual(values = colors_v[3:6], na.value = adjustcolor("grey70", alpha.f = 0.7)) + 
   labs(col = "Marker Cell Type", x = "UMAP1", y = "UMAP2") +
   theme_bw(base_family = "sans", base_size = 18) +
@@ -456,8 +456,8 @@ plot_projection_points(lo2$st$proj, use_dims = NULL, spaces = c("X"), pt_size = 
 #### Visualize original space
 
 ```{r}
-colors <-  which_marker(rownames(fData(lo2$st$data)), lo2$st$marker_genes)
-plot_projection_points(lo2$st$proj, use_dims = (3:4), spaces = c("X"), pt_size = 2, color=colors) +
+colors <-  which_marker(rownames(fData(dso$st$data)), dso$st$marker_genes)
+plot_projection_points(dso$st$proj, use_dims = (3:4), spaces = c("X"), pt_size = 2, color=colors) +
   scale_color_manual(values = colors_v[3:6], na.value = adjustcolor("grey70", alpha.f = 0.7)) + 
   labs(col = "Marker Cell Type", x = "UMAP1", y = "UMAP2") +
   theme_bw(base_family = "sans", base_size = 18) +
@@ -474,10 +474,10 @@ library(plotly)
 
 
 n <- 2
-dims <-  lo2$st$n_cell_types
-X <-  lo2$st$solution_proj$X
+dims <-  dso$st$n_cell_types
+X <-  dso$st$solution_proj$X
 colnames(X) <- paste0("R", c(1:dims))
-Omega <-  lo2$st$solution_proj$Omega
+Omega <-  dso$st$solution_proj$Omega
 colnames(Omega) <-  paste0("S", c(1:dims))
 
 
@@ -489,7 +489,7 @@ Omega_points <- Omega[indices,]
 
 
 
-colors <-  which_marker(rownames(fData(lo2$st$data)), lo2$st$marker_genes)
+colors <-  which_marker(rownames(fData(dso$st$data)), dso$st$marker_genes)
 
 font <- list(
   family = "Helvetica",
@@ -503,7 +503,7 @@ ax_settings <- list(title = '',
                     ticks = '', 
                     showticklabels = F, 
                     titlefont = font)
-to_plot <- as.data.frame(lo2$st$proj$X)
+to_plot <- as.data.frame(dso$st$proj$X)
 to_plot$color <- as.character(colors)
 to_plot$color[is.na(to_plot$color)] <- "not a marker"
 fig_X <- plotly::plot_ly(
@@ -549,7 +549,7 @@ ax_settings <- list(title = '',
                     ticks = '', 
                     showticklabels = F, 
                     titlefont = font)
-to_plot <- as.data.frame(lo2$st$proj$Omega)
+to_plot <- as.data.frame(dso$st$proj$Omega)
 fig_Omega <- plotly::plot_ly(
   to_plot,
   x = ~S2,
@@ -581,10 +581,10 @@ fig_Omega
 ## Plot heatmap of marker genes expressions per component
 
 ```{r fig.height = 5, fig.width = 2}
-markers  <- lo2$get_marker_genes()
+markers  <- dso$get_marker_genes()
 
 # Gess correct order of proportions column here
-solution <-  lo2$finalize_solution()
+solution <-  dso$finalize_solution()
 reordered_H <- solution$H[guess_order(solution$H, true_proportions), ]
 sorted_predicted_cell_numbers <- strtoi(gsub("^.*_", "", rownames(reordered_H)))
 
