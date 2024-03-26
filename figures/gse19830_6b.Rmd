@@ -7,7 +7,7 @@ output: html_document
 
 ```{r}
 # path to save everything
-dir_to_save_fig <-  "../output_figures/GSE19830/"
+dir_to_save_fig <-  "../out/GSE19830/"
 dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
 source("../figure_utils.R") # for same colors
 ```
@@ -19,6 +19,7 @@ library('GEOquery')
 library(biomaRt)
 library(matrixStats)
 library(ComplexHeatmap)
+library(progress)
 ```
 
 ## Package
@@ -130,17 +131,17 @@ length(PROTEIN_CODING_GENES)
 keep coding genes only
 
 ```{r}
-lo2 <- Linseed2Solver$new()
-lo2$set_data(data_raw, gene_anno_lists=list(CODING = PROTEIN_CODING_GENES))
-lo2$basic_filter( keep_true_cols = c("CODING"), remove_true_cols_default = c())
-lo2$project(n_ct)
+dso <- DualSimplexSolver$new()
+dso$set_data(data_raw, gene_anno_lists=list(CODING = PROTEIN_CODING_GENES))
+dso$basic_filter( keep_true_cols = c("CODING"), remove_true_cols_default = c())
+dso$project(n_ct)
 
-print(paste("Dim for the prefiltered data data:", toString(dim(lo2$get_data()))))
+print(paste("Dim for the prefiltered data data:", toString(dim(dso$get_data()))))
 ```
 
 ```{r fig.height = 5, fig.width = 11}
-lo2$plot_svd(dims=1:15)
-lo2$plot_projected("zero_distance", "zero_distance", use_dims = list(2:3))
+dso$plot_svd(dims=1:15)
+dso$plot_projected("zero_distance", "zero_distance", use_dims = list(2:3))
 ```
 
 ## Additional filters
@@ -151,7 +152,7 @@ check distribution of median absolute deviation to see which genes will be delet
 
 ```{r}
 dummy_threshold <-  1
-data <-  lo2$get_data()
+data <-  dso$get_data()
 anno <-  get_anno(data)
 anno$PASS_FILTER <-  FALSE
 anno[anno$log_mad > dummy_threshold,]$PASS_FILTER <-  TRUE
@@ -162,11 +163,11 @@ plot_feature(data, feature = "log_mad", col_by ='PASS_FILTER')
 Filter the data with selected threshold
 
 ```{r fig.height = 4, fig.width=14}
-lo2$basic_filter(log_mad_gt = dummy_threshold, )
-lo2$project(3)
+dso$basic_filter(log_mad_gt = dummy_threshold, )
+dso$project(3)
 
-svd_plot_2 <- lo2$plot_svd(1:10) + theme_minimal(base_size = 8)
-points_2 <-  lo2$plot_projected("black", "black",use_dims = 2:3, show_plots=F) +  theme_minimal(base_size = 8)
+svd_plot_2 <- dso$plot_svd(1:10) + theme_minimal(base_size = 8)
+points_2 <-  dso$plot_projected("black", "black",use_dims = 2:3, show_plots=F) +  theme_minimal(base_size = 8)
 plotlist = list(points_2, svd_plot_2)
 cowplot::plot_grid(plotlist=plotlist, rel_widths = c(0.66, 0.33)) 
 ```
@@ -180,11 +181,11 @@ Repeat previous cell with increasing thresholds to observe how SVD singular valu
 Plot distance of genes from the projection hyperplane
 
 ```{r fig.height = 4, fig.width=14}
-distance_dist_plot_noizy <- plot_feature(lo2$get_data(), feature = "plane_distance") + theme_minimal(base_size = 15)
-color = fData(lo2$get_data())$plane_distance
-X_points_noizy <-  plot_projection_points(lo2$st$proj, use_dims=2:3,color=color,color_name="plane_distance", spaces = c("X"), pt_size = 2) + theme_minimal(base_size = 15)
+distance_dist_plot_noizy <- plot_feature(dso$get_data(), feature = "plane_distance") + theme_minimal(base_size = 15)
+color = fData(dso$get_data())$plane_distance
+X_points_noizy <-  plot_projection_points(dso$st$proj, use_dims=2:3,color=color,color_name="plane_distance", spaces = c("X"), pt_size = 2) + theme_minimal(base_size = 15)
 
-distances_distribution <-   plot_feature_pair(lo2$get_data(), "plane_distance", "zero_distance", T, size = 0.1)
+distances_distribution <-   plot_feature_pair(dso$get_data(), "plane_distance", "zero_distance", T, size = 0.1)
 
 
 plotlist = list( X_points_noizy, distance_dist_plot_noizy, distances_distribution)
@@ -195,15 +196,15 @@ cowplot::plot_grid(plotlist=plotlist, nrow = 1, rel_widths = c(0.4, 0.3, 0.3))
 Remove genes which are to far from projection hyperplane
 
 ```{r}
-lo2$distance_filter(plane_d_lt = 0.015, zero_d_lt = NULL, genes = T)
-lo2$project(n_ct)
+dso$distance_filter(plane_d_lt = 0.015, zero_d_lt = NULL, genes = T)
+dso$project(n_ct)
 ```
 
 Color points by distance
 
 ```{r fig.height = 4, fig.width=14}
-current_svd_plot <- lo2$plot_svd(1:10) + theme_minimal(base_size = 8)
-current_points_plot <-  lo2$plot_projected("plane_distance", "plane_distance",use_dims = 2:3, show_plots=F) +  theme_minimal(base_size = 8)
+current_svd_plot <- dso$plot_svd(1:10) + theme_minimal(base_size = 8)
+current_points_plot <-  dso$plot_projected("plane_distance", "plane_distance",use_dims = 2:3, show_plots=F) +  theme_minimal(base_size = 8)
 plotlist = list(current_points_plot, current_svd_plot)
 cowplot::plot_grid(plotlist=plotlist, rel_widths = c(0.66, 0.33)) 
 ```
@@ -211,7 +212,7 @@ cowplot::plot_grid(plotlist=plotlist, rel_widths = c(0.66, 0.33))
 Repeat previous cell with decreasing thresholds to observe how SVD singular values will change. (in a perfect case should see only n_ct non-zero singular values)
 
 ```{r}
-lo2$plot_svd_history()
+dso$plot_svd_history()
 ```
 
 ## Finaly train the model
@@ -220,8 +221,8 @@ lo2$plot_svd_history()
 
 ```{r}
 set.seed(1)
-lo2$init_solution("random")
-lo2$plot_projected("zero_distance", "zero_distance",with_solution=TRUE, use_dims = list(2:3))
+dso$init_solution("random")
+dso$plot_projected("zero_distance", "zero_distance",with_solution=TRUE, use_dims = list(2:3))
 ```
 
 ### Train multiple times with changing hyperparameters
@@ -248,7 +249,7 @@ for  (lr_step in 1:LR_DECAY_STEPS) {
     beta_term <- original_beta_term
       for (x in 1:PARAMETERS_INCREASE_STEPS) {
         # Main training method, you can just run this
-        lo2$optim_solution(RUNS_EACH_STEP, 
+        dso$optim_solution(RUNS_EACH_STEP, 
                            optim_config(coef_hinge_H = lambda_term,
                                         coef_hinge_W =beta_term,
                                         coef_der_X = lr_x, 
@@ -272,7 +273,7 @@ print(paste("Total time", time.taken))
 ### Plot errors
 
 ```{r}
-plot_errors(lo2$st$solution_proj,   variables = c(
+plot_errors(dso$st$solution_proj,   variables = c(
     "deconv_error",
     "lamdba_error",
     "beta_error",
@@ -291,9 +292,9 @@ options("linseed-rasterize"=T)
 ### History of solution
 
 ```{r fig.width=5, fig.height=5}
-colnames(lo2$st$proj$X) <- c("R1", "R2", "R3")
-colnames(lo2$st$proj$Omega) <- c("S1", "S2", "S3")
-proj_solution_history <- lo2$plot_projected(use_dims = (2:3), wrap=F, with_legend = F)
+colnames(dso$st$proj$X) <- c("R1", "R2", "R3")
+colnames(dso$st$proj$Omega) <- c("S1", "S2", "S3")
+proj_solution_history <- dso$plot_projected(use_dims = (2:3), wrap=F, with_legend = F)
 proj_solution_history[[1]] # genes in a space of samples 
 proj_solution_history[[2]] # samples in a space of genes
 ```
@@ -316,9 +317,9 @@ ggarrange(pltX, pltOmega)
 ## Get solution (W and H)
 
 ```{r}
-solution <- lo2$finalize_solution()
+solution <- dso$finalize_solution()
 names(solution)
-#solution <- lo2$get_solution()
+#solution <- dso$get_solution()
 ```
 
 ## Compare with true proportions/basis
@@ -362,19 +363,19 @@ ptp_lines
 
 ```{r fig.height = 5, fig.width = 11}
 
-markers  <- lo2$get_marker_genes()
+markers  <- dso$get_marker_genes()
 
 to_plot <- data_raw[unlist(markers), apply(true_proportions, 2, function(x) any(x == 1))]
 
-lo2$plot_projected(rownames(to_plot), use_dims = (2:3))
+dso$plot_projected(rownames(to_plot), use_dims = (2:3))
 ```
 
 ### More decorated markers plot (as it is in the paper)
 
 ```{r fig.height = 5, fig.width = 5}
 
-colors <-  which_marker(rownames(fData(lo2$st$data)), lo2$st$marker_genes)
-plot_markers <- plot_projection_points(lo2$st$proj, use_dims = (2:3), spaces = c("X"), pt_size = 1, color=colors) +
+colors <-  which_marker(rownames(fData(dso$st$data)), dso$st$marker_genes)
+plot_markers <- plot_projection_points(dso$st$proj, use_dims = (2:3), spaces = c("X"), pt_size = 1, color=colors) +
   scale_color_manual(values = colors_v[3:5], na.value = adjustcolor("grey70", alpha.f = 0.7)) + 
   labs(col = "Marker Cell Type", x = "R2", y = "R3") +
   theme_bw(base_family = "sans", base_size = 12) +
@@ -384,8 +385,8 @@ plot_markers <- plot_projection_points(lo2$st$proj, use_dims = (2:3), spaces = c
 filename <- paste0(dir_to_save_fig,"marker_highlight_with_legend.svg")
 ggsave(filename, plot_markers, width=4.5, height=3, device=svg)
 
-colors <-  which_marker(rownames(fData(lo2$st$data)), lo2$st$marker_genes)
-plot_markers <- plot_projection_points(lo2$st$proj, use_dims = (2:3), spaces = c("X"), pt_size = 1, color=colors) +
+colors <-  which_marker(rownames(fData(dso$st$data)), dso$st$marker_genes)
+plot_markers <- plot_projection_points(dso$st$proj, use_dims = (2:3), spaces = c("X"), pt_size = 1, color=colors) +
   scale_color_manual(values = colors_v[3:5], na.value = adjustcolor("grey70", alpha.f = 0.7)) + 
   labs(col = "Marker Cell Type", x = "R2", y = "R3") +
   theme_bw(base_family = "sans", base_size = 12) +
