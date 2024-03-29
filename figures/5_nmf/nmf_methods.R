@@ -6,11 +6,9 @@ library(data.table)
 
 library(ggsignif)
 library('ComplexHeatmap')
-library('Rcpp')
 library('GEOquery')
 library(linseed)
 library(dplyr)
-library(raster)
 library(grid)
 library(gridExtra)
 library(ggrastr)
@@ -22,15 +20,14 @@ library(DualSimplex)
 
 #### Data Generation methods ####
 make_syntetic_data <- function(M, N, K ) {
-  V <- syntheticNMF(M, K, N, noise=TRUE)
+  nmf_object <- syntheticNMF(M, K, N, factors = T, noise=TRUE)
+  V <- nmf_object[[1]]
   rownames(V) <- c(paste0("feature", 1:nrow(V)))
   colnames(V) <- c(paste0("mixture", 1:ncol(V)))
-  true_H <-  V$coefficients
-  true_W <- V$basis
+  true_H <-  nmf_object$H
+  true_W <- nmf_object$W
   colnames(true_H) <- colnames(V)
   rownames(true_W) <- rownames(V)
-  
-  
   return (list(V=V, true_H=true_H, true_W=true_W))
   
 }
@@ -1073,12 +1070,12 @@ plot_metrics_box <- function(res_methods, data_used, folder_to_save_results, tit
   filename <- paste0(folder_to_save_results, "H_summary_", title, ".svg")
   ggsave(filename, summarized_H, width=3.5, height=5, device=svglite)
   
-  for (comp_ind in 1:length(per_component_w_plot_list)) {
-    filename <- paste0(folder_to_save_results, "W_", comp_ind, title, ".svg")
-    ggsave(filename, per_component_w_plot_list[[comp_ind]], width=7.5, height=5, device=svglite)
-    filename <- paste0(folder_to_save_results,"H_", comp_ind, title, ".svg")
-    ggsave(filename, per_component_h_plot_list[[comp_ind]], width=7.5, height=5, device=svglite)
-  }
+  # for (comp_ind in 1:length(per_component_w_plot_list)) {
+  #   filename <- paste0(folder_to_save_results, "W_", comp_ind, title, ".svg")
+  #   ggsave(filename, per_component_w_plot_list[[comp_ind]], width=7.5, height=5, device=svglite)
+  #   filename <- paste0(folder_to_save_results,"H_", comp_ind, title, ".svg")
+  #   ggsave(filename, per_component_h_plot_list[[comp_ind]], width=7.5, height=5, device=svglite)
+  # }
   per_comp_common_w <- ggarrange(plotlist=per_component_w_plot_list, nrow = 1, common.legend = TRUE, legend='none')
   per_comp_common_w <- annotate_figure(per_comp_common_w, top=text_grob(
     "Distance to original matrix W", face="bold", size= 21))
@@ -1153,9 +1150,6 @@ plot_pictures <- function(W_matrix, picture_title="title", folder_to_save_result
   size <- as.integer(sqrt(dim(W_matrix)[[1]]))
   par(mfrow = c(1,number_of_pictures),mar=c(0.5, 0.5, 0.5,0.5), oma=c(0.5, 0.5, 0.5,0.5)) # all sides have 3 lines of space
   res <- lapply(c(1:number_of_pictures), function(picture_index){
-    # plot(raster(matrix(W_matrix[, picture_index], nrow = size, ncol = size, byrow = TRUE)),
-    #      col = gray.colors(100, start = 0.3, end = 0.9, gamma = 2.2, alpha = NULL), 
-    #      axes=FALSE, box=FALSE, legend=FALSE, ann=FALSE)
     matrix_to_draw <- tf(matrix(W_matrix[, picture_index], nrow = size, ncol = size, byrow = TRUE))
     image(matrix_to_draw,
           col=grey(seq(0, 1, length = 64)), axes = FALSE)
@@ -1196,9 +1190,6 @@ plot_single_pictures <- function(W_matrix, picture_title="title", folder_to_save
     filename <- paste0(folder_to_save_results, picture_title,picture_index,  ".jpeg")
     jpeg(filename, width = 400, height = 400)
     par(mar=c(0.5, 0.5, 0.5,0.5), oma=c(0.5, 0.5, 0.5,0.5)) # all sides have 3 lines of space
-    # plot(raster(matrix(W_matrix[, picture_index], nrow = size, ncol = size, byrow = TRUE)),
-    #      col = gray.colors(100, start = 0.3, end = 0.9, gamma = 2.2, alpha = NULL), 
-    #      axes=FALSE, box=FALSE, legend=FALSE, ann=FALSE)
     matrix_to_draw <- tf(matrix(W_matrix[, picture_index], nrow = size, ncol = size, byrow = TRUE))
     image(matrix_to_draw,
           col=grey(seq(0, 1, length = 64)), axes = FALSE)

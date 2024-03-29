@@ -5,6 +5,19 @@ output: html_notebook
 
 # Imports
 
+
+```{r}
+if (!require("NMF", quietly = TRUE))
+  install.packages("NMF")
+if (!require("hNMF", quietly = TRUE))
+  install.packages("hNMF")
+if (!require("ComplexHeatmap", quietly = TRUE))
+  BiocManager::install("ComplexHeatmap")
+if (!require("RcppML", quietly = TRUE))
+  install.packages('RcppML')
+```
+
+
  
 ```{r}
 dir_to_save_fig <-  "../../out/NMF/" # path to save everything
@@ -47,15 +60,15 @@ plot_w_h_v(global_generated_data$true_W, global_generated_data$true_H, global_ge
 ## Solve this NMF using NMF package (3 different algorithms here)
 
 ```{r}
-res_methods <- nmf(global_generated_data$V, current_K, list('lee', 'brunet', 'nsNMF'), nrun=5, .options='kt')
+res_methods <- NMF::nmf(global_generated_data$V, current_K, list('lee', 'brunet', 'nsNMF'), nrun=5, .options='kt')
 ```
 
 ```{r}
-res_halsAcc <- nmf(global_generated_data$V, current_K, hNMF::HALSacc, nrun=5, .options='tk', name="HALSacc")
+res_halsAcc <-  NMF::nmf(global_generated_data$V, current_K, hNMF::HALSacc, nrun=5, .options='tk', name="HALSacc")
 res_methods[["HALSacc"]] <- res_halsAcc
-res_PGNMF <- nmf(global_generated_data$V, current_K, hNMF::PGNMF, nrun=5, .options='tk', name="PGNMF")
+res_PGNMF <-  NMF::nmf(global_generated_data$V, current_K, hNMF::PGNMF, nrun=5, .options='tk', name="PGNMF")
 res_methods[["PGNMF"]] <- res_PGNMF
-res <- nmf(global_generated_data$V, current_K, als_nmf_algorithm, nrun=5, .options='tk', name="ALS")
+res <-  NMF::nmf(global_generated_data$V, current_K, als_nmf_algorithm, nrun=5, .options='tk', name="ALS")
 res_methods[["ALS"]] <- res
 ```
 
@@ -68,7 +81,7 @@ res_methods[["Linseedv2 NMF"]] <- NULL
 ```
 
 ```{r}
-res <- nmf(global_generated_data$V, current_K, dualsimplex_nmf_algorithm, nrun=5, .options='tk', name="DualSimplex")
+res <-  NMF::nmf(global_generated_data$V, current_K, dualsimplex_nmf_algorithm, nrun=5, .options='tk', name="DualSimplex")
 res_methods[["DualSimplex"]] <- res
 ```
 

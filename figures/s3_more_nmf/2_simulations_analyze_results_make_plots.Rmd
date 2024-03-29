@@ -9,18 +9,19 @@ dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
 
 unloadNamespace("linseed2")
 devtools::load_all(path='../../../linseed2/')
-source('nmf_methods.R')
-source("../../figure_utils.R") # for same colors
+source('../5_nmf/nmf_methods.R')
+source("../../R/figure_utils.R") # for same colors
 
 ```
 
 # Analyze saved NMF results
 ```{r}
 current_K <- 4
-current_M <- 1000
-current_N <- 800
+current_N <- 300
+current_M <- 200
 
-noise_deviation <- 0
+
+noise_deviation <- 1
 noise_nature <- "proportional" #proportional additive
 proportions <-  "random_proportions" # simplex random_proportions
 ```
@@ -35,31 +36,6 @@ file_name <- paste0(dir_to_save_fig, noise_nature, '_random_noise_', noise_devia
 result_random <- readRDS(file=file_name)
 ```
 
-
-
-### Draw result pictures obtained by each method
-
-
-```{r fig.height = 5, fig.width = 5}
-
-individual_pictures <-  T # plot single picture for a file or all K pictures
-
-if (individual_pictures) {
-  orig_pictures <-  plot_single_pictures(result_random$data_used[[1]]$true_W, "original_picture", dir_to_save_fig)
-} else {
-
-orig_pictures <-  plot_pictures(result_random$data_used[[1]]$true_W,  "original_pictures", dir_to_save_fig)
-}
-
-per_method_pictures <- plot_pictures_for_result(result_random$fit_objects, 
-                                                model_index = 3, 
-                                                dir_to_save_fig, 
-                                                individual_pictures = individual_pictures)
-for (k in 1:current_K) {
-  image(per_method_pictures$DualSimplex[[k]], col=grey(seq(0, 1, length = 64)), axes=0)
-}
-
-```
 
 
 
@@ -190,8 +166,8 @@ median_df_D <- t %>%
 
 
 ```{r}
-dso <- result_random$fit_objects$DualSimplex[[9]]@misc$obj
-data_used <- result_random$data_used[[9]]
+dso <- result_random$fit_objects$DualSimplex[[3]]@misc$obj
+data_used <- result_random$data_used[[3]]
 ```
 
 ## Identify X and Omega for true coordinates
