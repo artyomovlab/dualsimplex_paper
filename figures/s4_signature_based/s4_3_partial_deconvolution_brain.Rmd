@@ -8,6 +8,7 @@ output: html_notebook
 ## Imports
 
 
+
 ```{r}
 # path to results and to save everything
 dir_to_save_fig <-  "../../output_figures/signature_based_7a/"
@@ -18,6 +19,8 @@ unloadNamespace("linseed2")
 devtools::load_all(path='../../../linseed2/')
 source("../../figure_utils.R") # for same colors
 ```
+
+
 
 ```{r}
 library(CellMix) # to compare with
@@ -30,6 +33,7 @@ library(parallel) # needed for CellMix/DSA
 library(e1071) # needed for CellMix/DSA
 library(reshape2)
 library(ggrastr)
+library(svglite)
 source("additional_sources_used/CIBERSORT.R") # to compare with
 ```
 
@@ -191,10 +195,18 @@ subset_pca <- pca$x[, 1:n_components]
 
 
 ```{r}
+# Perform UMAP
 set.seed(5)
 um <- uwot::umap(subset_pca, ret_model = TRUE)
 genes_umap <- um$embedding
 
+
+```
+```{r}
+systemfonts::font_info()
+```
+
+```{r}
 ct_labels <- rep(NA, length(rownames(genes_umap)))
 names(ct_labels) <- rownames(genes_umap)
 ct_labels[names(rev_mlist)] <- rev_mlist
@@ -203,22 +215,21 @@ ct_labels <- unlist(ct_labels[rownames(genes_umap)])
 to_plot <- as.data.frame(genes_umap)
 to_plot[["cell_type"]] <- brain_ct_map_long[ct_labels]
 res_plot <-  ggplot(to_plot[is.na(ct_labels),], aes_string(x="V2", y="V1", col="cell_type")) +
-    rasterise(geom_point(size=2), dpi=600) +
-   # scale_color_manual(values = colors_v, na.value = adjustcolor("grey70", alpha.f = 0.7)) + 
+    rasterise(geom_point(size=1.5), dpi=600) +
+    scale_color_manual(values = colors_v, na.value = "grey70") + 
       rasterise(geom_point(data=to_plot[!is.na(ct_labels),], 
                            size=3, 
                            aes_string(col="cell_type")), dpi=600) + 
     labs(col = "Marker Cell Type", x = "UMAP1", y = "UMAP2") +
     theme_bw(base_family = "sans", base_size = 18) +
     theme(axis.ticks = element_blank(),
-          axis.text = element_blank())
+          axis.text = element_blank()) +  ggtitle("Genes PCA 1-7 UMAP, markers highlighted")
 
 filename <- paste0(dir_to_save_fig,"7_2_1_partial_umap.svg")
-ggsave(file=filename, plot=res_plot, width=10, height=7, device=svg)
+ggsave(file=filename, plot=res_plot, width=10, height=7, device=svglite)
 
 res_plot
 ```
-
 
 
 ## Create linseed2 object
@@ -236,7 +247,7 @@ lo2$plot_svd_history()
 ## Check umap of projected points
 
 ```{r fig.width=10, fig.height=7}
-set.seed(4)
+set.seed(13)
 lo2$run_umap(neighbors_X = 15, neighbors_Omega = 20)
 lo2$st$marker_genes <- marker_list
 colors <-  which_marker(rownames(fData(lo2$st$data)), lo2$st$marker_genes)
@@ -276,7 +287,7 @@ res_plot <- rasterise(DimPlot(so, group.by = "orig.celltype"), dpi=300) +
   scale_colour_manual(values = alpha(colors_m, 1), na.value = alpha("grey70", 1))
 
 filename <- paste0(dir_to_save_fig, "7_3_2_annotation_sc.svg")
-ggsave(file=filename, plot=res_plot, width=3, height=3, device=svg)
+ggsave(file=filename, plot=res_plot, width=3, height=3, device=svglite)
 res_plot
 ```
 
@@ -297,7 +308,7 @@ list_of_plots <- lapply(names(list_of_plots), function(current_name){
   res_plot <-  list_of_plots[[current_name]]
   filename <- paste0(dir_to_save_fig, "7_3_2_", current_name,"_sc.svg")
 
-  ggsave(file=filename, plot=res_plot, width=3, height=3, device=svg)
+  ggsave(file=filename, plot=res_plot, width=3, height=3, device=svglite)
   res_plot
 
   return (res_plot)
@@ -357,7 +368,7 @@ ptp_lines <-  linseed::plotProportions(ptp[[1]],
     axis.text.x = element_text(angle = 45, hjust = 1))
 
 filename <- paste0(dir_to_save_fig,"7_3_5_ptp_lines.svg")
-ggsave(filename, ptp_lines, width=3.5, height=3, device=svg)
+ggsave(filename, ptp_lines, width=3.5, height=3, device=svglite)
 ptp_lines
 ```
 
@@ -399,6 +410,7 @@ read_pt <- function(model_n, rep_n, sig = DS_NAME, dir = "gse11058_partial_data"
 ## Do 5 independent runs on the same data 
 
 ```{r}
+
 for (rep_n in seq(1, 5)) {
   print(rep_n)
   # Read the data
@@ -479,14 +491,14 @@ for (rep_n in seq(1, 5)) {
 ## Make comparison plot for multiple methods
 
 ```{r fig.height=10, fig.width=11}
-save_dir <- "./partial_fig_7_save/brain"
+library(svglite)
+#save_dir <- "./7_partial_figure_save/brain"
 filename <- paste0(dir_to_save_fig, "7_3_3_barplot.svg")
 
 models <- c("linseed2", "dsa"
             , "cib"
             )
 signatures <- list("VL", "NG", "CA")
-
 total_rmses <- data.frame()
 for (rep_n in seq(1, 5)) {
   this_dfs <- lapply(models, function(model) {
@@ -505,7 +517,7 @@ for (rep_n in seq(1, 5)) {
     } else if (model == "dsa") {
       rmses$model <- "DSA"
     } else if (model == "linseed2") {
-      rmses$model <- "Linseed 2"
+      rmses$model <- "DualSimplex"
     }
     rmses$rep <- rep_n
     rmses
@@ -535,7 +547,7 @@ res_plot <- ggplot(agg_data, aes(x = cell_type, y = mean_rmse, fill = cell_type)
   theme(legend.position = "none") +
   facet_grid(rows = vars(signature), cols = vars(model))
 
-ggsave(file=filename, plot=res_plot, width=11, height=10, device=svg)
+ggsave(file=filename, plot=res_plot, width=11, height=10, device=svglite)
 res_plot
 ```
 

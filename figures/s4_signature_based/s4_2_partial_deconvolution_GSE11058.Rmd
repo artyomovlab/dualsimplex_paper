@@ -17,8 +17,7 @@ dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
 
 unloadNamespace("linseed2")
 devtools::load_all(path='../../../linseed2/')
-source('nmf_methods.R')
-source("../figure_utils.R") # for same colors
+source("../../figure_utils.R") # for same colors
 ```
 
 
@@ -418,6 +417,7 @@ ptb <- res$ptb
 ```{r}
 library(grid)
 library(gridExtra)
+library(svglite)
 ```
 
 ```{r, fig.width=20, fig.height=5}
@@ -425,7 +425,7 @@ proportions_plot <- plot_ptp_scatter(ptp)
 
 filename <- paste0(dir_to_save_fig, "7_2_3_proportions_plot.svg")
 
-ggsave(file=filename, plot=proportions_plot, width=20, height=5, device=svg)
+ggsave(file=filename, plot=proportions_plot, width=20, height=5, device=svglite)
 
 
 ```
@@ -436,7 +436,7 @@ expressions_plot <- plot_ptb_scatter(ptb, max_expr = 18)
 
 filename <- paste0(dir_to_save_fig, "7_2_4_expressions_plot.svg")
 
-ggsave(file=filename, plot=expressions_plot, width=20, height=5, device=svg)
+ggsave(file=filename, plot=expressions_plot, width=20, height=5, device=svglite)
 
 ```
 
