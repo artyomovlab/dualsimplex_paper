@@ -2,6 +2,7 @@
 title: "R Notebook"
 output: html_notebook
 ---
+This file will produce models for S3 figure. Thisis training only, result models will be saved to out folder 
 
 # Imports
 
@@ -16,62 +17,70 @@ if (!require("RcppML", quietly = TRUE))
   install.packages('RcppML')
 ```
 
+
  
 ```{r}
 # path to save everything
-dir_to_save_fig <-  "../../out/NMF/"
+dir_to_save_fig <-  "../out/NMF_simulated/"
 dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
-source('../../R/setup.R') # import main package
-source('../../R/nmf_methods.R')
+source('../R/setup.R') # import main package
+source('../R/nmf_methods.R')
 ```
 
-# Pictures NMF problem
+# Simulated_data
 
-## Single Run
-### Read pictures (main components)
+
+## Params
 ```{r}
-size <- 128
-number_of_pictures_to_select <- 4
 
-pictures_W <- rhdf5::h5read("../../data/img/merged_imgs.h5", "matrix")
-pictures_W <- t(pictures_W)[,1:number_of_pictures_to_select]
-current_M <- nrow(pictures_W)
-current_K <- ncol(pictures_W)
+current_M <- 500
+current_K <- 4
+current_N <- 300
 ```
 
+## Single run 
 
-### Make N mixed pictures with or without noise)
+### Make data and create object
 
-```{r}
-current_N <- 30
-globally_generated_pic_data <- make_picture_data_random_mixtures(current_M, current_N, current_K, pictures_W, noise_deviation = 0 )
-```
-
-### Solve this unmixing problem using DualSimplex algorithm
-
-#### Create object
 
 ```{r}
+
+globally_generated_data <- make_simulated_data(current_M, current_N, current_K, noise_deviation =15 )
+
+start_time <- Sys.time()
 dso <- DualSimplexSolver$new()
-dso$set_data(globally_generated_pic_data$noizy_V)
+dso$set_data(globally_generated_data$noizy_V)
 dso$project(current_K)
 dso$init_solution("random")
+end_time <- Sys.time()
+difftime(end_time, start_time, unit="mins")
 ```
-#### Train model
+### Check data params visualization 
 
-We perform `LR_DECAY_STEPS` epochs of training with decreasing learning rate (decrease by `lr_decay`)
-  Each epoch we run `PARAMETERS_INCREASE_STEPS` steps, where we increase `lambda` and `beta` by `params_increase`
-    For each step we do less iterations starting   `RUNS_EACH_STEP` and decreasing this amount by 0.7 each step
+```{r fig.height = 4, fig.width=14}
+distance_dist_plot_noizy <- plot_feature(dso$get_data(), feature = "plane_distance") + theme_minimal(base_size = 15)
+color = fData(dso$get_data())$plane_distance
+X_points_noizy <-  plot_projection_points(dso$st$proj, use_dims=2:3,color=color,color_name="plane_distance", spaces = c("X"), pt_size = 2) + theme_minimal(base_size = 15)
+
+distances_distribution <-   plot_feature_pair(dso$get_data(), "plane_distance", "zero_distance", T, size = 0.1)
+
+
+plotlist = list( X_points_noizy, distance_dist_plot_noizy, distances_distribution)
+
+cowplot::plot_grid(plotlist=plotlist, nrow = 1, rel_widths = c(0.4, 0.3, 0.3)) 
+```
+### Train Model
+
 
 ```{r}
 
 dso$init_solution("random")
-start_with_hinge_H <-  1
-start_with_hinge_W <-  1
+start_with_hinge_H <-  0.1
+start_with_hinge_W <-  0.1
 RUNS_EACH_STEP <-  2000
 lr_decay <- 0.1
 LR_DECAY_STEPS <-  12
-PARAMETERS_INCREASE_STEPS <-  3
+PARAMETERS_INCREASE_STEPS <-  4
 lr_x <-  0.1
 lr_omega <-  0.1
 params_increase <- 100
@@ -105,11 +114,16 @@ for  (lr_step in 1:LR_DECAY_STEPS) {
   
 }
 solution <- dso$finalize_solution()
+
+
+
 ```
 
 
+
 ```{r}
-dso$plot_projected("plane_distance", "plane_distance", use_dims=list(2:3, 3:4))
+# umap visualization
+dso$plot_projected("zero_distance", "zero_distance", use_dims = NULL, with_solution = T, with_history = T, with_legend = F)
 ```
 
 ```{r}
@@ -117,7 +131,7 @@ dso$plot_error_history()
 ggarrange(plot_negative_basis_change(dso), plot_negative_proportions_change(dso))
 ```
 
-#### Try to visualize solution
+###Try to visualize solution
 (This is not mandatory code, just for your visual understanding)
 Here we will plot predicted solution points together with real coordinates in a 3D space of Sinkhorn transformed matrices.
 
@@ -133,10 +147,10 @@ H_solution[H_solution < 0] <-  0
 Take true solution matrices (Without sinkhorn transformation).
 
 ```{r}
-true_V <-  globally_generated_pic_data$V[rownames(W_solution),colnames(H_solution)]
-true_V_noizy <-  globally_generated_pic_data$noizy_V[rownames(W_solution),colnames(H_solution)]
-true_W <-  globally_generated_pic_data$true_W[rownames(W_solution),]
-true_H <-  globally_generated_pic_data$true_H[,colnames(H_solution)]
+true_V <-  globally_generated_data$V[rownames(W_solution),colnames(H_solution)]
+true_V_noizy <-  globally_generated_data$noizy_V[rownames(W_solution),colnames(H_solution)]
+true_W <-  globally_generated_data$true_W[rownames(W_solution),]
+true_H <-  globally_generated_data$true_H[,colnames(H_solution)]
 ```
 
 
@@ -326,43 +340,44 @@ fig_Omega <- fig_Omega %>% layout(showlegend = FALSE,
 fig_Omega
 ```
 
-## Multiple Runs
 
-### Define experimentsmethod
+# Multiple runs
 
+## Define experiment method
 
 ```{r}
-run_experiment_picture_random_noizy <- function(current_K, current_M, current_N, pictures_W, n_data_generations = 3, 
+run_experiment_picture_random_noizy <- function(current_K, current_M, current_N, pictures_W, 
+                                                 n_data_generations = 3, 
+                                                 n_runs_each_model = 10,
                                                   start_with_hinge_W=1, start_with_hinge_H=1,
                                                   LR_DECAY_STEPS = 7, RUNS_EACH_STEP = 500,    PARAMETERS_INCREASE_STEPS = 2, 
                                                   lr_x =  0.1,
                                                   lr_omega = 0.1,
-                                                 noise_deviation=3.5, noise_nature="proportional", n_runs_for_each_model = 10 ) {
+                                                 noise_deviation=3.5, noise_nature="proportional" ) {
   
-  data_generated <- lapply(c(1:n_data_generations), function(run_index) make_picture_data_random_mixtures(current_M, current_N, current_K, pictures_W, noise_deviation))
-  
+  data_generated <- lapply(c(1:n_data_generations), function(run_index) make_simulated_data(current_M, current_N, current_K, noise_deviation))
   total_result <- lapply(c(1:n_data_generations), function(run_index) {
       print(paste("data gen ", run_index))
       syntetic_data <- data_generated[[run_index]]
       current_res_methods <-  list()
-      current_res_methods <- NMF::nmf(syntetic_data$noizy_V, current_K, list('lee', 'brunet'), .options='vp10', nrun=n_runs_for_each_model)
+      current_res_methods <- NMF::nmf(syntetic_data$noizy_V, current_K, list('lee', 'brunet'), .options='vp10', nrun=n_runs_each_model)
 
       print("Compute NMF method 'HALSacc'")
-      halsacc_res <- NMF::nmf(syntetic_data$noizy_V, current_K, hNMF::HALSacc, nrun=n_runs_for_each_model, .options='vp10', name="HALSacc")
+      halsacc_res <- NMF::nmf(syntetic_data$noizy_V, current_K, hNMF::HALSacc, nrun=n_runs_each_model, .options='vp10', name="HALSacc")
       #halsacc_res <- nmf(syntetic_data$V, current_K, halsacc_nmf_algorithm, nrun=10, .options='tp1', name="HALSacc")
       current_res_methods[["HALSacc"]] <- halsacc_res
       print("Compute NMF method 'PGNMF'")
-      pgnmf_res <- NMF::nmf(syntetic_data$noizy_V, current_K, hNMF::PGNMF, nrun=n_runs_for_each_model, .options='vp10', name="PGNMF")
+      pgnmf_res <- NMF::nmf(syntetic_data$noizy_V, current_K, hNMF::PGNMF, nrun=n_runs_each_model, .options='vp10', name="PGNMF")
       # # pgnmf_res <- nmf(syntetic_data$V, current_K, pgnmf_nmf_algorithm, nrun=10, .options='tp1', name="PGNMF")
       current_res_methods[["PGNMF"]] <- pgnmf_res
       #print("Compute NMF method 'ALS'")
-      als_nmf_res <- NMF::nmf(syntetic_data$noizy_V, current_K, als_nmf_algorithm, nrun=n_runs_for_each_model, .options='p1', name="ALS")
+      als_nmf_res <- NMF::nmf(syntetic_data$noizy_V, current_K, als_nmf_algorithm, nrun=n_runs_each_model, .options='p1', name="ALS")
       current_res_methods[["ALS"]] <- als_nmf_res
       print("Compute NMF method 'DualSimplex'")
       linseed_res <- NMF::nmf(syntetic_data$noizy_V, 
                          current_K, 
                          dualsimplex_nmf_algorithm, 
-                         nrun=n_runs_for_each_model, .options='vp10', name="DualSimplex", 
+                         nrun=n_runs_each_model, .options='vp10', name="DualSimplex", 
                          start_with_hinge_W=start_with_hinge_W, 
                          start_with_hinge_H=start_with_hinge_H,
                          LR_DECAY_STEPS = LR_DECAY_STEPS, 
@@ -386,19 +401,25 @@ run_experiment_picture_random_noizy <- function(current_K, current_M, current_N,
 }
 ```
 
-
-### Run experiment
+## Perform experiment
 
 ```{r}
-current_N  <-  30
+current_N  <-  300
+current_M <-  200
+current_K <- 4
+noise_nature <-  "proportional"
 # For N = 500 use   start_with_hinge_W=0.1 start_with_hinge_H=0.1
 # For N = 100 use   start_with_hinge_W=10 start_with_hinge_H=1
-noise_nature <-  "proportional"
 
-for (noise_deviation in c( 1)) {
+
+for (noise_deviation in c(
+  1
+ # 0.1,
+ # 0.3,  0.5, 1, 2
+  )) {
   result_random <- run_experiment_picture_random_noizy(current_K = current_K, current_M= current_M, current_N = current_N, 
-                                                      n_data_generations = 10, 
-                                                       n_runs_for_each_model=10, 
+                                                      n_data_generations = 3, 
+                                                      n_runs_each_model=3,
                                                       pictures_W = pictures_W ,  
                                                       noise_deviation=noise_deviation,
                                                       noise_nature = noise_nature,
@@ -407,28 +428,33 @@ for (noise_deviation in c( 1)) {
                                                       LR_DECAY_STEPS = 11,
                                                       RUNS_EACH_STEP = 2000, 
                                                       PARAMETERS_INCREASE_STEPS = 3,
-                                                      lr_x =  0.1)
- 
+                                                      lr_x =  0.1,
+                                                      lr_omega = 0.1)
+
   print("Save to file")
   file_name <- paste0(dir_to_save_fig, noise_nature, "_random_noise_",  as.character(noise_deviation),  '_random_proportions_', 
                       current_K ,'K_', current_N, 'N_', current_M, 'M_random-H_10runs_10init_random.rds')
   saveRDS(result_random, file=file_name)
+
 
 }
 
 ```
 
 
+
+
 ```{r}
 check_triangles(result_random$fit_objects)
 ```
+
+
 ```{r, fig.height = 5, fig.width=20}
 distances_to_check <- plot_metrics_box(res_methods = result_random$fit_objects, 
                                        data_used=result_random$data_used, 
-                                       title = "test_pictures_result", 
+                                       title = "test_simulated_result", 
                                        folder_to_save_results = dir_to_save_fig)
 distances_to_check$plot 
-distances_to_check$W_plot
-distances_to_check$H_plot
-```
+ggarrange(distances_to_check$W_plot, distances_to_check$H_plot)
 
+```

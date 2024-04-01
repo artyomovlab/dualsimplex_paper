@@ -3,12 +3,12 @@
 
 ```{r}
 # path to results and to save everything
-dir_to_save_fig <-  "../../out/NMF/"
+dir_to_save_fig <-  "../out/NMF/"
 dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
 
-source('../../R/setup.R') # import main package
-source('../../R/nmf_methods.R')
-source("../../R/figure_utils.R") # for same colors
+source('../R/setup.R') # import main package
+source('../R/nmf_methods.R')
+source("../R/figure_utils.R") # for same colors
 ```
 
 # Analyze saved NMF results

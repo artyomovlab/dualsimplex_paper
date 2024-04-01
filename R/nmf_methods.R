@@ -138,7 +138,7 @@ dualsimplex_nmf_algorithm <- function(x, seed,
                                     lr_x =  0.1,
                                     lr_omega = 0.1
                                     ){
-  source('setup.R') # import main package
+  source('../R/setup.R') # import main package. this this is temporary and only works when running from figures directory
   factorization_rank <- nbasis(seed)
   
   

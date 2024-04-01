@@ -40,10 +40,10 @@ if (!require("svglite", quietly = TRUE))
 
  
 ```{r}
-dir_to_save_fig <-  "../../out/NMF/" # path to save everything
+dir_to_save_fig <-  "../out/NMF/" # path to save everything
 dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
-source('../../R/setup.R') # import main package
-source('../../R/nmf_methods.R')  # nmf methods
+source('../R/setup.R') # import main package
+source('../R/nmf_methods.R')  # nmf methods
 ```
 
 
