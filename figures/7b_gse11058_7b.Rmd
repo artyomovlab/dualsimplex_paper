@@ -51,8 +51,7 @@ library(linseed)
 ## Package
 
 ```{r}
-unloadNamespace("linseed2")
-devtools::load_all(path='../../../linseed_code/linseed2/')
+source('../R/setup.R') # import main package
 ```
 
 # Prepare Data

@@ -11,13 +11,12 @@ output: html_notebook
 
 ```{r}
 # path to results and to save everything
-dir_to_save_fig <-  "../../output_figures/signature_based_7a/"
+dir_to_save_fig <-  "../out/signature_based_7a/"
 dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
 
 
-unloadNamespace("linseed2")
-devtools::load_all(path='../../../linseed2/')
-source("../../figure_utils.R") # for same colors
+source('../R/setup.R') # import main package
+source("../R/figure_utils.R") # for same colors
 ```
 
 
