@@ -24,8 +24,8 @@ make_syntetic_data <- function(M, N, K ) {
   V <- nmf_object[[1]]
   rownames(V) <- c(paste0("feature", 1:nrow(V)))
   colnames(V) <- c(paste0("mixture", 1:ncol(V)))
-  true_H <-  nmf_object$H
-  true_W <- nmf_object$W
+  true_H <-  nmf_object[[3]] # should be H or coefficients from the object
+  true_W <- nmf_object[[2]] # should be W or basis from the object
   colnames(true_H) <- colnames(V)
   rownames(true_W) <- rownames(V)
   return (list(V=V, true_H=true_H, true_W=true_W))
