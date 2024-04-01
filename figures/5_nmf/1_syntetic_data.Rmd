@@ -93,15 +93,11 @@ res_methods[["ALS"]] <- res
 ```
 
 
-
 # Solve the same NMF problem using Dual Simplex Method
 
-```{r}
-res_methods[["Linseedv2 NMF"]] <- NULL
-```
 
 ```{r}
-res <-  NMF::nmf(global_generated_data$V, current_K, dualsimplex_nmf_algorithm, nrun=5, .options='tk', name="DualSimplex")
+res <-  NMF::nmf(global_generated_data$V, current_K, dualsimplex_nmf_algorithm, nrun=5, .options='tkp1', name="DualSimplex")
 res_methods[["DualSimplex"]] <- res
 ```
 

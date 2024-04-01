@@ -138,6 +138,8 @@ dualsimplex_nmf_algorithm <- function(x, seed,
                                     lr_x =  0.1,
                                     lr_omega = 0.1
                                     ){
+  unloadNamespace("linseed2")   
+  devtools::load_all(path='../../../linseed2/')  # import main package
   factorization_rank <- nbasis(seed)
   
   
