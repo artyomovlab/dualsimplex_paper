@@ -40,13 +40,12 @@ if (!require("svglite", quietly = TRUE))
 
  
 ```{r}
-dir_to_save_fig <-  "../../out/NMF/" # path to save everything
-dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T) 
-unloadNamespace("linseed2")   
-devtools::load_all(path='../../../linseed2/')  # import main package
-
-source('nmf_methods.R')  # nmf methods 
+dir_to_save_fig <-  "../out/NMF/" # path to save everything
+dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
+source('../R/setup.R') # import main package
+source('../R/nmf_methods.R')  # nmf methods
 ```
+
 
 # Syntetic experiment 
 Here we use Syntetic data from NMF package just to check that everything is working fine
@@ -97,7 +96,7 @@ res_methods[["ALS"]] <- res
 
 
 ```{r}
-res <-  NMF::nmf(global_generated_data$V, current_K, dualsimplex_nmf_algorithm, nrun=5, .options='tkp1', name="DualSimplex")
+res <-  NMF::nmf(global_generated_data$V, current_K, dualsimplex_nmf_algorithm, nrun=5, .options='tk', name="DualSimplex")
 res_methods[["DualSimplex"]] <- res
 ```
 

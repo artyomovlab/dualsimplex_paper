@@ -7,10 +7,9 @@ dir_to_save_fig <-  "../../out/NMF_simulated/"
 dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
 
 
-unloadNamespace("linseed2")
-devtools::load_all(path='../../../linseed2/')
-source('../5_nmf/nmf_methods.R')
-source("../../R/figure_utils.R") # for same colors
+source('../R/setup.R') # import main package
+source('../R/nmf_methods.R')
+source("../R/figure_utils.R") # for same colors
 
 ```
 
