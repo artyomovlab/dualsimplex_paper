@@ -13,11 +13,11 @@ source("../R/setup.R")
 ```
 
 ```{r}
-save_dir <- "../out/linseed2_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
+save_dir <- "../out/dualsimplex_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
 ```
 
 ```{r}
-lo2 <- Linseed2Solver$from_state(save_dir, save_there = F)
+lo2 <- DualSimplexSolver$from_state(save_dir, save_there = F)
 ```
 
 ```{r}
@@ -62,7 +62,7 @@ plot_diff <- function(props_pheno, geoms, y = NULL, x = NULL, fill = NULL, col =
     num_pwc_signif <- sum(stat_res$pairwise$p.adj.signif != "ns")
     p <- p + labs(
       subtitle = rstatix::get_test_label(stat_res$kruskal, detailed = TRUE),
-      caption = paste0(rstatix::get_pwc_label(stat_res$pairwise, type="text"), "; significant differences: ", num_pwc_signif) 
+      caption = paste0(rstatix::get_pwc_label(stat_res$pairwise, type="text"), "; significant differences: ", num_pwc_signif)
     )
     if (num_pwc_signif < 20) {
       p <- p + ggpubr::stat_pvalue_manual(stat_res$pairwise, hide.ns = T, bracket.nudge.y = shift_brackets)
@@ -74,7 +74,7 @@ plot_diff <- function(props_pheno, geoms, y = NULL, x = NULL, fill = NULL, col =
 stattest <- function(props_pheno, x, y) {
   f <- as.formula(paste(y, x, sep=" ~ "))
   res.kruskal <- props_pheno %>% rstatix::kruskal_test(f)
-  pwc <- props_pheno %>% rstatix::dunn_test(f, p.adjust.method = "bonferroni") 
+  pwc <- props_pheno %>% rstatix::dunn_test(f, p.adjust.method = "bonferroni")
   pwc <- pwc %>% rstatix::add_xy_position(x = x)
   return(list(pairwise = pwc, kruskal = res.kruskal))
 }
@@ -168,7 +168,7 @@ factor_features <- factor_cols
 # Custom tweaks
 props_pheno$alcohol_consumption_frequency <- as.character(props_pheno$alcohol_consumption_frequency)
 props_pheno$alcohol_consumption_frequency[
-  props_pheno$alcohol_consumption_frequency == "2" | 
+  props_pheno$alcohol_consumption_frequency == "2" |
     props_pheno$alcohol_consumption_frequency == "2.5"
 ] <- "2-2.5"
 props_pheno$alcohol_consumption_frequency[
@@ -231,7 +231,7 @@ to_plot <- props_pheno[, c(cell_types, small_factor_cols)] %>%
 ggplot(to_plot, aes(x = feature_value, y = cell_type_proportion)) +
   geom_boxplot(outlier.alpha = 0) +
   geom_jitter(height=0.01, width=0.03, size=0.3, alpha = 0.8) +
-  facet_grid(rows = vars(cell_type), cols = vars(feature), scales = "free") + 
+  facet_grid(rows = vars(cell_type), cols = vars(feature), scales = "free") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ```
 
@@ -250,7 +250,7 @@ ggplot(to_plot, aes(x = feature_value, y = cell_type_proportion)) +
 
 props_pheno$tobacco_smoking <- props_pheno$Q_tobacco_smoking_pack_years_smoked
 m_q_features <- c(
-  "Q_lymph_nodes_examined_count", 
+  "Q_lymph_nodes_examined_count",
   "tobacco_smoking"
 )
 m_numeric_features <- substring(m_q_features, 3)
@@ -280,9 +280,9 @@ to_plot <- to_test %>%
 ggplot(to_plot, aes(x = feature_value, y = cell_type_proportion)) +
   geom_boxplot(outlier.alpha = 0) +
   geom_jitter(height=0.01, width=0.03, size=0.3, alpha = 0.8) +
-  facet_grid(rows = vars(cell_type), cols = vars(feature), scales = "free") + 
+  facet_grid(rows = vars(cell_type), cols = vars(feature), scales = "free") +
   theme_bw() +
-  theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + 
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank()) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ```
 
@@ -301,7 +301,7 @@ for (feature in c("hpv_status_p16", "tumor_grade")) {
     stat_res <- stattest(to_test_, feature, ct)
     num_pwc_signif <- sum(stat_res$pairwise$p.adj.signif != "ns")
     lim <- if (ct == "cell_type_1") {
-      
+
     }
     plots[[paste(feature, ct)]] <- ggplot(to_test_, aes_string(x = feature, y = ct)) +
       geom_boxplot(outlier.size = 0.5) +
@@ -319,6 +319,7 @@ for (feature in c("hpv_status_p16", "tumor_grade")) {
   }
 }
 ```
+
 ```{r}
 for (fname in names(plots)) {
   ggsave(

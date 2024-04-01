@@ -1,1 +1,1 @@
-# linseed2_paper
+# dualsimplex_paper

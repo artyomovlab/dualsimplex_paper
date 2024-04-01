@@ -1,5 +1,5 @@
 ---
-title: "Figures 6C: Preprocessing of TCGA-HNSC for Linseed2"
+title: "Figures 6C: Preprocessing of TCGA-HNSC for DualSimplex"
 output:
   html_document:
     df_print: paged
@@ -16,7 +16,7 @@ Some parameters for later
 ```{r}
 pt_size <- 0.2
 n_ct_preproc <- 20
-save_dir <- "../out/linseed2_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
+save_dir <- "../out/dualsimplex_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
 ```
 
 
@@ -88,10 +88,10 @@ gene_anno <- list(
 sample_anno <- list(ST_TUMOR = colnames(data_raw)[sample_types == "Primary Tumor"])
 ```
 
-# Linseed2-based preprocesing
+# DualSimplex-based preprocesing
 ```{r}
 # Create a new Linseed 2 object. Downstream analysis will happen inside it.
-lo2 <- Linseed2Solver$new()
+lo2 <- DualSimplexSolver$new()
 lo2$set_save_dir(save_dir)
 ```
 
@@ -159,7 +159,7 @@ lo2$plot_mad()
 # Checkpoint
 # We specified save_dir in the very beginning
 # lo2$save_state()
-# lo2 <- Linseed2Solver$from_state(save_dir, save_there = T)
+# lo2 <- DualSimplexSolver$from_state(save_dir, save_there = T)
 ```
 
 
@@ -215,7 +215,7 @@ lo2$plot_projected(color_genes = filter_out, use_dims = NULL, pt_size = pt_size)
 # Checkpoint
 # We specified save_dir in the very beginning
 # lo2$save_state()
-# lo2 <- Linseed2Solver$from_state(save_dir, save_there = T)
+# lo2 <- DualSimplexSolver$from_state(save_dir, save_there = T)
 ```
 
 
@@ -267,7 +267,7 @@ lo2$get_filtering_stats()
 # Checkpoint
 # We specified save_dir in the very beginning
 # lo2$save_state()
-# lo2 <- Linseed2Solver$from_state(save_dir, save_there = T)
+# lo2 <- DualSimplexSolver$from_state(save_dir, save_there = T)
 ```
 
 
@@ -376,7 +376,7 @@ lo2$plot_projection_diagnostics()
 ```{r}
 # Checkpoint
 # lo2$save_state()
-# lo2 <- Linseed2Solver$from_state(save_dir, save_there = T)
+# lo2 <- DualSimplexSolver$from_state(save_dir, save_there = T)
 ```
 
 ## Filtering results
@@ -399,6 +399,6 @@ lo2$plot_projected(use_dims = NULL, pt_size = 0.5)
 ```{r}
 # Checkpoint
 # lo2$save_state()
-# lo2 <- Linseed2Solver$from_state(save_dir, save_there = T)
+# lo2 <- DualSimplexSolver$from_state(save_dir, save_there = T)
 ```
 

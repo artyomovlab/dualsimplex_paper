@@ -12,12 +12,12 @@ source("../R/setup.R")
 ```
 
 ```{r}
-save_dir <- "../out/linseed2_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
-options(`linseed-rasterize` = TRUE)
+save_dir <- "../out/dualsimplex_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
+options(`dualsimplex-rasterize` = TRUE)
 ```
 
 ```{r}
-lo2 <- Linseed2Solver$from_state(save_dir, save_there = T)
+lo2 <- DualSimplexSolver$from_state(save_dir, save_there = T)
 ```
 
 ```{r fig.width = 14, fig.height = 6}
@@ -64,9 +64,9 @@ lo2$optim_solution(1000, optim_config(coef_hinge_H = .01, coef_hinge_W = .01, co
 lo2$plot_error_history()
 ```
 
-```{r fig.width = 11, fig.height = 6}
-plt <- lo2$plot_projected(use_dims = NULL, with_legend = F, with_history = T)
-ggsave("../out/6d_trajectory.svg", width = 11, height = 6, plot = plt, device = svg)
+```{r fig.width = 8, fig.height = 4.3}
+plt <- lo2$plot_projected(use_dims = NULL, with_legend = F, with_history = T, pt_size = 0.6)
+ggsave("../out/6d_trajectory.svg", width = 8, height = 4.3, plot = plt, device = svglite::svglite)
 plt
 ```
 
@@ -125,61 +125,3 @@ plt
 ```{r}
 lo2$save_state()
 ```
-
-
-
-# To move
-```{r}
-# Write solution data for phantasus
-# da <- rbind(lo2$get_solution()$H, exprs(lo2$get_data()))
-# dia <- diag(rep(1, ncol(lo2$get_solution()$W)))
-# rownames(dia) <- colnames(lo2$get_solution()$W)
-# colnames(dia) <- rownames(dia)
-# da <- cbind(rbind(dia, lo2$get_solution()$W), da)
-# write.table(da, "hnsc_6ct_data.tsv", sep = "\t", quote = F, row.names = T, col.names = T)
-# lo2$generate_summary(seurat_obj = seurat_obj, with_animated_optim = FALSE)
-```
-
-```{r}
-plot_negative_proportions_change <- function(lo_object) {
-  N <- lo2$st$proj$meta$N
-  M <- lo2$st$proj$meta$M
-  K <- lo2$st$proj$meta$K
-  errors_statistics <-  lo2$st$solution_proj$optim_history$errors_statistics
-  total_H <- N * K
-  toPlot <- as.data.frame(errors_statistics[,"neg_props_count", drop=F])
-  last_prop_count <- round(toPlot[nrow(toPlot),"neg_props_count"] / total_H,6) * 100
-  toPlot$iteration <- 0:(nrow(toPlot) - 1)
-  plt <- ggplot(toPlot,aes(y=neg_props_count,x=iteration)) + geom_line() + theme_minimal() +
-      xlab("Iteration") + ylab("Negative proportions")+
-    annotate("text",  x=Inf, y = Inf, label = paste0(last_prop_count,"%"), vjust=1, hjust=1) +
-    ggtitle("Number of negative proportions")
-  return(plt)
-}
-
-
-plot_negative_basis_change <- function(lo_object) {
-  N <- lo2$st$proj$meta$N
-  M <- lo2$st$proj$meta$M
-  K <- lo2$st$proj$meta$K
-  errors_statistics <-  lo2$st$solution_proj$optim_history$errors_statistics
-  total_W <- M * K
-  toPlot <- as.data.frame(errors_statistics[,"neg_basis_count",drop=F])
-  last_basis_count <- round(toPlot[nrow(toPlot),"neg_basis_count"] / total_W,6) * 100
-  toPlot$iteration <- 0:(nrow(toPlot) - 1)
-  plt <- ggplot(toPlot,aes(y=neg_basis_count,x=iteration)) + geom_line() + theme_minimal() +
-      xlab("Iteration") + ylab("Negative basis")+
-      annotate("text",  x=Inf, y = Inf, label = paste0(last_basis_count,"%"), vjust=1, hjust=1) +
-    ggtitle("Number of negative basis elements")
-  return(plt)
-}
-
-plot_matrix_hist_with_negative <- function(data_, title="Distribution of values", ...) {
-  toPlot <- as.data.frame(c(data_))
-  colnames(toPlot) <- "value"
-  toPlot$negative <- (toPlot$value < 0)
-  plt <- ggplot(toPlot) + geom_histogram(aes(x=value, fill=negative), stat = "bin", ...) + theme_minimal() + ggtitle(title)
-  return(plt)
-}
-```
-

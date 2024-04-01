@@ -14,7 +14,7 @@ library(Seurat)
 ```
 
 ```{r}
-save_dir <- "../out/linseed2_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
+save_dir <- "../out/dualsimplex_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
 custom_cols <- c(
   "#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a",
   "#b15928", "#a6cee3", "#b2df8a", "#fb9a99", "#fdbf6f"
@@ -22,7 +22,7 @@ custom_cols <- c(
 ```
 
 ```{r}
-lo2 <- Linseed2Solver$from_state(save_dir, save_there = F)
+lo2 <- DualSimplexSolver$from_state(save_dir, save_there = F)
 ```
 
 Markers for enrichment in single cell (100 per cell type)
@@ -58,6 +58,7 @@ plot_marker_enrichment(seurat_obj, lo2$get_ct_names(), limits = NULL)
 plot_marker_enrichment(so_malignant, lo2$get_ct_names(), limits = NULL)
 plot_marker_enrichment(so_epithelial, lo2$get_ct_names(), limits = NULL)
 ```
+
 ```{r fig.width=10, fig.height=15}
 cancer_cts <- c("cell_type_4", "cell_type_5", "cell_type_6", "cell_type_8", "cell_type_9")
 plt <- plot_marker_enrichment(
