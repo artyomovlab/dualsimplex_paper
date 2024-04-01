@@ -138,6 +138,8 @@ dualsimplex_nmf_algorithm <- function(x, seed,
                                     lr_x =  0.1,
                                     lr_omega = 0.1
                                     ){
+  unloadNamespace("linseed2")   
+  devtools::load_all(path='../../../linseed2/')  # import main package
   factorization_rank <- nbasis(seed)
   
   
@@ -337,7 +339,7 @@ pgnmf_nmf_algorithm <- function(x, seed){
 als_nmf_algorithm <- function(x, seed){
   factorization_rank <- nbasis(seed)
   
-  solution <- RcppML::nmf(Matrix(x), k = factorization_rank)
+  solution <- RcppML::nmf(Matrix::Matrix(x), k = factorization_rank)
   
   # W matrix
   W <- solution$w
