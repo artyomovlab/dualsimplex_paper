@@ -11,14 +11,12 @@ output:
 source("../R/figure_utils.R")
 source("../R/setup.R")
 library(Seurat)
+options("dualsimplex-rasterize" = T)
 ```
 
 ```{r}
-save_dir <- "../out/linseed2_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
-```
-
-```{r}
-lo2 <- Linseed2Solver$from_state(save_dir, save_there = F)
+save_dir <- "../out/dualsimplex_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
+lo2 <- DualSimplexSolver$from_state(save_dir, save_there = F)
 ```
 
 
@@ -44,7 +42,7 @@ length(unique(msigdbr_t2g$gs_name))
 ```{r}
 enrichment_res_tmp <- list()
 for (ct in lo2$get_ct_names()) {
-  
+
   # For some classic cell types we want only most common gene sets
   if (ct == "cell_type_1") {
     # Macrophages
@@ -55,7 +53,7 @@ for (ct in lo2$get_ct_names()) {
   } else {
     this_msigdbr_t2g <- msigdbr_t2g
   }
-  
+
   enrichment <- clusterProfiler::enricher(
     gene = lo2$get_marker_genes()[[ct]],
     TERM2GENE = this_msigdbr_t2g,
@@ -135,37 +133,37 @@ select_pw <- c(
   "HALLMARK_INTERFERON_GAMMA_RESPONSE", #1
   "HALLMARK_INTERFERON_ALPHA_RESPONSE", #2
   "HALLMARK_ALLOGRAFT_REJECTION", #3
-  
+
   "GO_CONTRACTILE_FIBER", #4
   "GO_MUSCLE_CONTRACTION", #5
   "HALLMARK_MYOGENESIS", #6
-  
+
   "SENGUPTA_NASOPHARYNGEAL_CARCINOMA_DN", #7
   "GO_MOTILE_CILIUM", #8
   "GO_CILIUM_ORGANIZATION", #9
   "RICKMAN_HEAD_AND_NECK_CANCER_D", #10
-  
+
   "GO_RESPONSE_TO_XENOBIOTIC_STIMULUS", #11
   "HALLMARK_XENOBIOTIC_METABOLISM", #12
   "GO_UNSATURATED_FATTY_ACID_METABOLIC_PROCESS", #13
-  
+
   "RICKMAN_HEAD_AND_NECK_CANCER_A", #14
   "PYEON_HPV_POSITIVE_TUMORS_UP", #15
   "SLEBOS_HEAD_AND_NECK_CANCER_WITH_HPV_UP", #16
-  
+
   "RICKMAN_HEAD_AND_NECK_CANCER_E", #17
   "LIN_SILENCED_BY_TUMOR_MICROENVIRONMENT", #18
   "HOLLERN_SQUAMOUS_BREAST_TUMOR", #19
-  
+
   "GO_EXTRACELLULAR_STRUCTURE_ORGANIZATION", #20
   "HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION", #21
   "GO_COLLAGEN_CONTAINING_EXTRACELLULAR_MATRIX", #22
-  
+
   "GO_KERATINIZATION", #23
   "GO_CORNIFICATION", #24
   "GO_CORNIFIED_ENVELOPE", #25
   "RICKMAN_HEAD_AND_NECK_CANCER_C", #26
-  
+
   "RICKMAN_TUMOR_DIFFERENTIATED_WELL_VS_POORLY_DN", #27
   "BILD_HRAS_ONCOGENIC_SIGNATURE", #28
   "WU_CELL_MIGRATION", #29
@@ -248,10 +246,216 @@ colnames(basis) <- seq(1, ncol(basis))
 plt <- pheatmap::pheatmap(
   basis[sele, ],
   cluster_rows = F,
-  cluster_cols = F, 
+  cluster_cols = F,
   color = colorRampPalette(c("blue", "white", "red"))(100),
   legend = F
 )
 ggsave("../out/s2_typical_genes.svg", plt, width = 4.5, height = 10, device = svg)
+plt
+```
+
+
+# Convergence
+```{r}
+solutions <- list()
+```
+
+
+## Seed 20
+```{r}
+set.seed(20)
+lo2$init_solution("random")
+lo2$plot_projected()
+```
+
+```{r}
+lr <- 0.001
+lo2$optim_solution(6000, optim_config(coef_hinge_H = .01, coef_hinge_W = .01, coef_der_X = lr, coef_der_Omega = lr))
+lo2$plot_error_history()
+```
+
+```{r fig.width = 14, fig.height = 6}
+lo2$plot_projected(use_dims = NULL, with_legend = T, from_iter = 650)
+```
+
+```{r}
+solutions[[length(solutions) + 1]] <- lo2$st$solution_proj
+```
+
+
+## Seed 19
+```{r}
+set.seed(19)
+lo2$init_solution("select_x")
+lo2$plot_projected()
+```
+
+```{r fig.width = 14, fig.height = 6}
+# For select_x to correct Omega
+lo2$optim_solution(650, optim_config(coef_hinge_H = 1, coef_hinge_W = 1, coef_der_X = 0.001, coef_der_Omega = 0.1))
+lo2$plot_projected(use_dims = NULL, with_legend = T, from_iter = 1, to_iter = 650)
+```
+
+```{r}
+lr <- 0.001
+lo2$optim_solution(6000, optim_config(coef_hinge_H = .01, coef_hinge_W = .01, coef_der_X = lr, coef_der_Omega = lr))
+lo2$plot_error_history()
+```
+
+```{r fig.width = 14, fig.height = 6}
+lo2$plot_projected(use_dims = NULL, with_legend = T, from_iter = 650)
+```
+
+```{r}
+solutions[[length(solutions) + 1]] <- lo2$st$solution_proj
+```
+
+
+## Seed 17
+```{r}
+set.seed(17)
+lo2$init_solution("select_x")
+lo2$plot_projected()
+```
+
+```{r fig.width = 14, fig.height = 6}
+# For select_x to correct Omega
+lo2$optim_solution(650, optim_config(coef_hinge_H = 1, coef_hinge_W = 1, coef_der_X = 0.001, coef_der_Omega = 0.1))
+lo2$plot_projected(use_dims = NULL, with_legend = T, from_iter = 1, to_iter = 650)
+```
+
+```{r}
+lr <- 0.001
+lo2$optim_solution(6000, optim_config(coef_hinge_H = .01, coef_hinge_W = .01, coef_der_X = lr, coef_der_Omega = lr))
+lo2$plot_error_history()
+```
+
+```{r fig.width = 14, fig.height = 6}
+lo2$plot_projected(use_dims = NULL, with_legend = T, from_iter = 650)
+```
+
+```{r}
+solutions[[length(solutions) + 1]] <- lo2$st$solution_proj
+```
+
+
+## Seed 15
+```{r}
+set.seed(15)
+lo2$init_solution("select_x")
+lo2$plot_projected()
+```
+
+```{r fig.width = 14, fig.height = 6}
+# For select_x to correct Omega
+lo2$optim_solution(650, optim_config(coef_hinge_H = 1, coef_hinge_W = 1, coef_der_X = 0.001, coef_der_Omega = 0.1))
+lo2$plot_projected(use_dims = NULL, with_legend = T, from_iter = 1, to_iter = 650)
+```
+
+```{r}
+lr <- 0.001
+lo2$optim_solution(3000, optim_config(coef_hinge_H = .01, coef_hinge_W = .01, coef_der_X = lr, coef_der_Omega = lr))
+lo2$plot_error_history()
+```
+
+```{r fig.width = 14, fig.height = 6}
+lo2$plot_projected(use_dims = NULL, with_legend = T, from_iter = 650)
+```
+
+```{r}
+solutions[[length(solutions) + 1]] <- lo2$st$solution_proj
+```
+
+
+## Seed 10
+```{r}
+set.seed(10)
+lo2$init_solution("select_x")
+lo2$plot_projected()
+```
+
+```{r fig.width = 14, fig.height = 6}
+# For select_x to correct Omega
+lo2$optim_solution(650, optim_config(coef_hinge_H = 1, coef_hinge_W = 1, coef_der_X = 0.001, coef_der_Omega = 0.1))
+lo2$plot_projected(use_dims = NULL, with_legend = T, from_iter = 1, to_iter = 650)
+```
+
+```{r}
+lr <- 0.001
+lo2$optim_solution(3000, optim_config(coef_hinge_H = .01, coef_hinge_W = .01, coef_der_X = lr, coef_der_Omega = lr))
+lo2$plot_error_history()
+```
+
+```{r fig.width = 14, fig.height = 6}
+lo2$plot_projected(use_dims = NULL, with_legend = T, from_iter = 650)
+```
+
+```{r}
+solutions[[length(solutions) + 1]] <- lo2$st$solution_proj
+```
+
+## All solutions analysis
+```{r fig.width = 12, fig.height = 6}
+add_solution_jitter <- function(
+  plt,
+  solution_proj,
+  proj,
+  use_dims = NULL,
+  pt_size = 3,
+  spaces = c("X", "Omega")
+) {
+  points_2d <- get_2d_subset(proj, use_dims, solution_proj)[spaces]
+  points_2d <- lapply(
+    points_2d,
+    function(pts) cbind(pts, point = 1:nrow(pts))
+  )
+  if (length(spaces) > 1) {
+    points_2d <- concat_data(points_2d, "space")
+  } else {
+    points_2d <- as.data.frame(points_2d[[1]])
+  }
+  points_2d[, 1] <- points_2d[, 1] * rnorm(nrow(points_2d), 1, 0.05)
+  points_2d[, 2] <- points_2d[, 2] * rnorm(nrow(points_2d), 1, 0.05)
+  points_2d$point <- as.factor(points_2d$point)
+  x_col <- colnames(points_2d)[[1]]
+  y_col <- colnames(points_2d)[[2]]
+  plt <- plt + geom_point(
+    data = points_2d,
+    aes_string(x_col, y_col, fill = "point"),
+    color = "black",
+    pch = 21,
+    size = pt_size
+  ) + theme(legend.position = "none")
+  return(plt)
+}
+
+use_dims <- NULL
+plt_X <- plot_projection_points(
+  lo2$st$proj, spaces = "X", use_dims = use_dims, color = fData(lo2$st$data)$zero_distance
+)
+plt_Omega <- plot_projection_points(
+  lo2$st$proj, spaces = "Omega", use_dims = use_dims, color = pData(lo2$st$data)$zero_distance
+)
+
+for (solution_proj in solutions[2:5]) {
+  plt_X <- plt_X %>% add_solution_jitter(
+    solution_proj,
+    lo2$st$proj,
+    use_dims = use_dims,
+    spaces = "X",
+    pt_size = 3.5
+  )
+
+  plt_Omega <- plt_Omega %>% add_solution_jitter(
+    solution_proj,
+    lo2$st$proj,
+    use_dims = use_dims,
+    spaces = "Omega",
+    pt_size = 3.5
+  )
+}
+
+plt <- cowplot::plot_grid(plotlist = list(plt_X, plt_Omega))
+ggsave(file="../out/s2_convergence.svg", plot=plt, width=12, height=6, device = svglite::svglite)
 plt
 ```
