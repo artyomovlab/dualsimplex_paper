@@ -138,15 +138,11 @@ dualsimplex_nmf_algorithm <- function(x, seed,
                                     lr_x =  0.1,
                                     lr_omega = 0.1
                                     ){
-  unloadNamespace("linseed2")   
-  devtools::load_all(path='../../../linseed2/')  # import main package
+  source('setup.R') # import main package
   factorization_rank <- nbasis(seed)
   
   
   dso <-  DualSimplexSolver$new()
-  
-  
-  
   dso$set_data(x)
   dso$project(factorization_rank)
   dso$init_solution("random")
@@ -179,26 +175,6 @@ dualsimplex_nmf_algorithm <- function(x, seed,
     lr_omega <-  lr_omega * lr_decay
     
   }
-  
-  # R <-  dso$st$proj$meta$R
-  # S <-  dso$st$proj$meta$S
-  # X_solution <- dso$st$solution_proj$X
-  # Omega_solution <- t(dso$st$solution_proj$Omega)
-  # 
-  # # Correct X and Omega to produce sum-to-one matrices
-  # H_ss <-  X_solution %*% R
-  # H_ss[H_ss < 0] <-  0
-  # H_ss <-  H_ss / rowSums(H_ss) # should be row normalized
-  # W_gs <-  t(S) %*% Omega_solution
-  # W_gs[W_gs < 0] <-  0
-  # W_gs <-  t(t(W_gs) / rowSums( t(W_gs))) # should be column normalized
-  # 
-  # X_corrected <- H_ss %*% t(R)  # recalculate  X for sum-to-one matrix
-  # Omega_corrected <- S %*% W_gs # recalculate  Omega for sum-to-one matrix
-  # 
-  # dso$st$solution_proj$X <-  X_corrected
-  # dso$st$solution_proj$Omega <-  Omega_corrected
-  
 
   solution <- dso$finalize_solution() # this performs reverse sinkhorn procedure 
   sol_no_corr <-  dso$st$solution_no_corr  # factorization calculated from 1 step of sinkhorn
@@ -576,46 +552,6 @@ get_V_metric_values <- function(res_methods, data_used, metric="rmse") {
   return(total_df)
 }
 
-
-
-
-# get_V_rmse_values <- function(res_methods, data_used) {
-#   
-#   
-#   per_method_tables <- lapply(names(res_methods), function (method_name){
-#     curr_method_result <- res_methods[[method_name]]
-#     per_run_tables <- lapply(c(1:length(curr_method_result)), function(current_run) {
-#       run_result <- curr_method_result[[current_run]]
-#       curr_data <-  data_used[[current_run]]
-#       curr_H <- run_result$H
-#       curr_W <- run_result$W
-#       curr_D <- run_result$D_inv
-#       curr_H[curr_H < 0] <-  0
-#       curr_W[curr_W < 0] <-  0
-#       
-#       true_H <- curr_data$true_H
-#       true_W <- curr_data$true_W
-#       true_D <- curr_data$D_inv
-#       
-#       distance <- RMSE_function(true_W %*% true_D %*% true_H, curr_W %*% curr_D %*% curr_H)
-#       
-#       distances_table <-  data.table(rmse=distance)
-#       distances_table$run <- current_run
-#       return(distances_table)
-#     })
-#     method_df <- rbindlist(per_run_tables)
-#     
-#     method_df$method <- method_name
-#     return(method_df)
-#     
-#   })
-#   
-#   total_df <- rbindlist(per_method_tables)
-#   return(total_df)
-# }
-
-
-
 ## Will calculate RMSE distances for each method and each run. H matrix.
 get_D_difference_values <- function(res_methods, data_used) {
   
@@ -660,10 +596,6 @@ get_significance_values <-  function(distance_matrix, comparisons, vertical_gap 
   })
   return (stat_test_results)
 }
-
-
-
-
 
 # Move energy from H to W to make everything comparable
 correct_solution_to_normalize_H_and_W <- function(solution_W, solution_H) {
@@ -902,17 +834,6 @@ plot_metrics_box <- function(res_methods, data_used, folder_to_save_results, tit
                          annotations = stat_test_results[[comp_index]]$labels,
                          tip_length = 0)
   }
-  # gh <- gh + geom_signif(y_position = stat_test_results[[2]]$y.values, 
-  #                        xmin = unique(H_matrix_distances$component)- (2*0.5/4),
-  #                        xmax = unique(H_matrix_distances$component)+(0.5/4) - 0.02 ,
-  #                        annotations = stat_test_results[[2]]$labels,
-  #                        tip_length = 0)
-  # 
-  # gh <- gh + geom_signif(y_position = stat_test_results[[3]]$y.values, 
-  #                        xmin = unique(H_matrix_distances$component)- (2*0.5/4),
-  #                        xmax = unique(H_matrix_distances$component)+ (2*0.5/4)+ 0.04 ,
-  #                        annotations = stat_test_results[[3]]$labels,
-  #                        tip_length = 0)
   
   per_component_h_plot_list <- lapply(unique(H_matrix_distances$component), function(component_num) {
     curr_H_distances <-  H_matrix_distances[component == component_num]
@@ -1252,26 +1173,17 @@ sinkhorn_transform <- function(data_V, data_W, data_H, n_iters = 20) {
   for (i in seq_len(n_iters)) {
     D_vs_row_inv[[i]] <- rowSums(V_column)
     D_hs_row_inv[[i]] <- rowSums(H_column)
-    #print(paste("Dh", toString(dim( diag(D_hs_row_inv[[i]])))))
-    
+
     V_row <- diag(1 / D_vs_row_inv[[i]]) %*% V_column
     H_row <- diag(1 / D_hs_row_inv[[i]]) %*% H_column
     W_row <- diag(1 / D_vs_row_inv[[i]]) %*% W_column %*% diag(D_hs_row_inv[[i]])
-    #print(paste("V_row", toString(dim(V_row))))
-    #print(paste("W_row", toString(dim(W_row))))
-    #print(paste("H_row", toString(dim(H_row))))
     D_vs_column_inv[[i]] <- colSums(V_row)
     D_ws_col_inv[[i]] <- colSums(W_row)
-    #print(paste("Dw", toString(dim(diag(D_ws_col_inv[[i]])))))
-    #print(paste("Dv_col", toString(dim(diag(D_vs_column_inv[[i]])))))
     
     V_column <- V_row %*% diag(1 / D_vs_column_inv[[i]])
     W_column <- W_row %*% diag(1 / D_ws_col_inv[[i]])
     
     H_column <- diag(D_ws_col_inv[[i]]) %*% H_row %*% diag(1 / D_vs_column_inv[[i]])
-    #print(paste("V_col", toString(dim(V_column))))
-    #print(paste("W_col", toString(dim(W_column))))
-    #print(paste("H_col", toString(dim(H_column))))
   }
   list(
     V_row = V_row,

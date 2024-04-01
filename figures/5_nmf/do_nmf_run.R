@@ -5,9 +5,8 @@ rm(list = ls())
 # path to save everything
 dir_to_save_fig <-  "../../out/NMF_simulated/"
 dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
-unloadNamespace("DualSimplex")
-devtools::load_all(path='../../../linseed2/')
-source('nmf_methods.R')
+source('../../R/setup.R') # import main package
+source('../../R/nmf_methods.R')
 library(linseed)
 library(raster)
 
@@ -27,21 +26,21 @@ run_experiment_picture_random_noizy <- function(current_K, current_M, current_N,
     print(paste("data gen ", run_index))
     syntetic_data <- data_generated[[run_index]]
     current_res_methods <-  list()
-    current_res_methods <- nmf(syntetic_data$noizy_V, current_K, list('snmf/l','ls-nmf','lee', 'brunet', 'nsNMF'), .options='vp10', nrun=10)
+    current_res_methods <- NMF::nmf(syntetic_data$noizy_V, current_K, list('snmf/l','ls-nmf','lee', 'brunet', 'nsNMF'), .options='vp10', nrun=10)
     
     print("Compute NMF method 'HALSacc'")
-    halsacc_res <- nmf(syntetic_data$noizy_V, current_K, hNMF::HALSacc, nrun=10, .options='vp10', name="HALSacc")
+    halsacc_res <- NMF::nmf(syntetic_data$noizy_V, current_K, hNMF::HALSacc, nrun=10, .options='vp10', name="HALSacc")
     #halsacc_res <- nmf(syntetic_data$V, current_K, halsacc_nmf_algorithm, nrun=10, .options='tp1', name="HALSacc")
     current_res_methods[["HALSacc"]] <- halsacc_res
     #print("Compute NMF method 'PGNMF'")
-    pgnmf_res <- nmf(syntetic_data$noizy_V, current_K, hNMF::PGNMF, nrun=10, .options='vp10', name="PGNMF")
+    pgnmf_res <- NMF::nmf(syntetic_data$noizy_V, current_K, hNMF::PGNMF, nrun=10, .options='vp10', name="PGNMF")
     # # pgnmf_res <- nmf(syntetic_data$V, current_K, pgnmf_nmf_algorithm, nrun=10, .options='tp1', name="PGNMF")
     current_res_methods[["PGNMF"]] <- pgnmf_res
     #print("Compute NMF method 'ALS'")
-    als_nmf_res <- nmf(syntetic_data$noizy_V, current_K, als_nmf_algorithm, nrun=10, .options='p10', name="ALS")
+    als_nmf_res <- NMF::nmf(syntetic_data$noizy_V, current_K, als_nmf_algorithm, nrun=10, .options='p10', name="ALS")
     current_res_methods[["ALS"]] <- als_nmf_res
     print("Compute NMF method 'DualSimplex'")
-    linseed_res <- nmf(syntetic_data$noizy_V, 
+    linseed_res <- NMF::nmf(syntetic_data$noizy_V,
                        current_K, 
                        dualsimplex_nmf_algorithm, 
                        nrun=10, .options='vp10', name="DualSimplex", 
