@@ -337,7 +337,7 @@ pgnmf_nmf_algorithm <- function(x, seed){
 als_nmf_algorithm <- function(x, seed){
   factorization_rank <- nbasis(seed)
   
-  solution <- RcppML::nmf(Matrix(x), k = factorization_rank)
+  solution <- RcppML::nmf(Matrix::Matrix(x), k = factorization_rank)
   
   # W matrix
   W <- solution$w
