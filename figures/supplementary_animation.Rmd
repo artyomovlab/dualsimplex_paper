@@ -9,23 +9,55 @@ output:
 ```{r}
 source("../R/setup.R")
 library(ggplot2)
+library(gganimate)
+library(dplyr) 
 ```
 
-```{r}
+
+```{r, fig.width=4, fig.height=20}
 set.seed(4)
 sim <- create_simulation(1000, 100, 3, with_marker_genes = T) %>% add_basis_samples()
 
-scaling <- sinkhorn_scale(sim$data, 10)
-proj <- svd_project(scaling, 1:3)
+all_data <- data.frame()
 
-plot_projection_points(proj, use_dims = 2:3)
+plotlist <- list()
+for (i in 1:10) {
+  scaling <- sinkhorn_scale(sim$data, i)
+  proj <- svd_project(scaling, 1:100)
+  dims <- 2:3
+  plotlist[[(i - 1) * 2 + 1]] <- plot_projection_points(proj, dims, spaces = "X")
+  plotlist[[i * 2]] <- plot_projection_points(proj, dims, spaces = "Omega")
+}
+cowplot::plot_grid(plotlist = plotlist, ncol = 2)
 ```
 
 
 # Sinkhorn research
 ```{r}
+data <- sim$data - rowMeans(sim$data)
+svd_ <- svd(data)
+
+S <- t(svd_$u[, 1:2])
+R <- t(svd_$v[, 1:2])
+
+plot(data %*% t(R))
+plot(t(S %*% data))
+```
+
+```{r}
 data <- sim$data
 data <- data / rowSums(data)
+svd_ <- svd(data)
+
+S <- t(svd_$u[, 2:3])
+R <- t(svd_$v[, 2:3])
+
+plot(data %*% t(R))
+plot(t(S %*% data))
+```
+
+```{r}
+data <- data / colSums(data)
 svd_ <- svd(data)
 
 S <- t(svd_$u[, 2:3])
@@ -75,9 +107,9 @@ transform <- t(matrix(c(
 ), nrow = 2))
 to_plot <- to_plot %*% transform
 to_plot <- as.data.frame(to_plot)
-ggplot(to_plot, aes(x = V1, y = V2)) + geom_point() + theme_minimal() + theme(
+ggplot(to_plot, aes(x = V1, y = V2)) + geom_point(size = 0.2) + theme_minimal() + theme(
   axis.title = element_blank(), panel.grid = element_blank(), axis.text = element_blank()
-) + xlim(c(-0.05, 0.05)) + ylim(-0.05, 0.05)
+) + xlim(c(-0.15, 0.15)) + ylim(-0.15, 0.15)
 ```
 
 
@@ -86,21 +118,23 @@ is_X <- F
 
 animated_data <- data.frame(V1 = numeric(), V2 = numeric(), step = integer())
 if (is_X) {
-  xs <- c(1, 1, 0.55, 0.9, 0.54, 0.8, 0.52, 0.7, 0.5)
+  xs <- c(1, 0.55, 0.85, 0.54, 0.7, 0.5)
 } else {
-  xs <- c(1, 0.5, 1, 0.53, 0.9, 0.52, 0.8, 0.51, 0.5)
+  xs <- c(0.5, 1, 0.53, 0.85, 0.52, 0.5)
 }
 
 if (is_X) {
   limits <- c(-0.15, 0.15)
   zero_y <- -0.009
   zero_x <- -0.009
-  ax_len <- 0.135
+  ax_len <- 0.125
+  pt_size <- 0.3
 } else {
   limits <- c(-0.05, 0.05)
-  zero_y <- -0.003
-  zero_x <- -0.003
-  ax_len <- 0.045
+  zero_y <- -0.005
+  zero_x <- -0.005
+  ax_len <- 0.04
+  pt_size <- 1
 }
 ax_width <- 0.07
 arr_ow <- arrow(length = unit(0.3, "cm"))
@@ -118,7 +152,7 @@ for (i in seq_along(xs)) {
   } else {
     to_plot <- proj$Omega[, 2:3]
   }
-  transform <- t(matrix(c(1, 0, 0, 0.9 + (1 - 0.9) * i / length(xs)), nrow = 2))
+  transform <- t(matrix(c(1, 0, 0, 0.6 + (0.7 - 0.6) * i / length(xs)), nrow = 2))
   noise <- matrix(rnorm(n = nrow(to_plot) * 2, mean = 1, sd = (x - 0.5) * 3), ncol = 2)
   to_plot <- to_plot * noise
   to_plot <- to_plot %*% transform
@@ -130,26 +164,122 @@ for (i in seq_along(xs)) {
 
 colnames(animated_data)[1:2] <- c("V1", "V2")
 
-animated_data$point_id <- as.factor(animated_data$point_id) # Ensure point_id is treated as a factor
+animated_data$point_id <- as.factor(animated_data$point_id)
 
 p <- ggplot(animated_data, aes(x = V1, y = V2, group = point_id)) +
   geom_segment(seg(ax_len, 0), size = ax_width, col = "grey70") +
   geom_segment(seg(ax_len, 90), size = ax_width, col = "grey70") +
   geom_segment(seg(0.85*ax_len, 210), size = ax_width, col = "grey70") +
   geom_segment(seg(0.85*ax_len, 20), size = ax_width, col = "grey70") +
-  geom_point() +
+  geom_point(size = pt_size) +
   theme_minimal() +
   theme(axis.title = element_blank(), panel.grid = element_blank(), axis.text = element_blank(), legend.position = "none") +
   xlim(limits) + ylim(limits) +
-  transition_states(step, state_length = 3, transition_length = 1) +
+  transition_states(step, state_length = 2, transition_length = 1, wrap = F) +
   ease_aes('exponential-in-out') +
   labs(title = if (is_X) "X space, Sinkhorn step: {closest_state}" else "Omega space, Sinkhorn step: {closest_state}")
 
-animate(p, renderer = gifski_renderer(), height = 610, width = 600, duration = 20, fps = 25, end_pause = 10)
+animate(
+  p,
+  renderer = ffmpeg_renderer(format = "mp4", options = list(pix_fmt = "yuv420p", vcodec = "libx264")),
+  height = 610,
+  width = 600,
+  duration = 17,
+  fps = 25,
+  end_pause = 0,
+  res = 150
+)
 if (is_X) {
-  anim_save("../out/sinkhorn_animation_x.gif")
+  anim_save("../out/sinkhorn_animation_x.mp4")
 } else {
-  anim_save("../out/sinkhorn_animation_omega.gif")
+  anim_save("../out/sinkhorn_animation_omega.mp4")
+}
+```
+
+```{r}
+mx_step <- max(animated_data$step)
+animated_data_2 <- animated_data[animated_data$step == mx_step, ]
+if (is_X) {
+  to_plot <- proj$X[, 2:3]
+} else {
+  to_plot <- proj$Omega[, 2:3]
+}
+transform <- t(matrix(c(1, 0, 0, 1), nrow = 2))
+to_plot <- to_plot %*% transform
+to_plot <- data.frame(to_plot, step = rep(mx_step + 1, nrow(to_plot)), point_id = rownames(to_plot))
+colnames(to_plot)[1:2] <- c("V1", "V2")
+animated_data_2 <- rbind(animated_data_2, to_plot)
+
+animated_data_2$point_id <- as.factor(animated_data_2$point_id)
+
+p <- ggplot(animated_data_2, aes(x = V1, y = V2, group = point_id)) +
+  geom_point(size = pt_size) +
+  theme_minimal() +
+  theme(axis.title = element_blank(), panel.grid = element_blank(), axis.text = element_blank(), legend.position = "none") +
+  xlim(limits) + ylim(limits) +
+  transition_states(step, state_length = 1, transition_length = 3, wrap = F) +
+  ease_aes('exponential-in-out') +
+  labs(title = if (is_X) "X space projection" else "Omega space projection")
+
+animate(
+  p,
+  renderer = ffmpeg_renderer(format = "mp4", options = list(pix_fmt = "yuv420p", vcodec = "libx264")),
+  height = 610,
+  width = 600,
+  duration = 3,
+  fps = 25,
+  end_pause = 0,
+  res = 150
+)
+
+if (is_X) {
+  anim_save("../out/proj_animation_x.mp4")
+} else {
+  anim_save("../out/proj_animation_omega.mp4")
+}
+```
+
+
+```{r}
+mx_step <- max(animated_data_2$step)
+animated_data_3 <- animated_data_2[animated_data_2$step == mx_step, ]
+if (is_X) {
+  to_plot <- proj$X[, 2:3]
+} else {
+  to_plot <- proj$Omega[, 2:3]
+}
+transform <- t(matrix(c(1, 0, 0, 1), nrow = 2))
+to_plot <- to_plot %*% transform
+to_plot <- data.frame(to_plot, step = rep(mx_step + 1, nrow(to_plot)), point_id = rownames(to_plot))
+colnames(to_plot)[1:2] <- c("V1", "V2")
+animated_data_3 <- rbind(animated_data_3, to_plot)
+
+animated_data_3$point_id <- as.factor(animated_data_3$point_id)
+
+p <- ggplot(animated_data_3, aes(x = V1, y = V2, group = point_id)) +
+  geom_point(size = pt_size) +
+  theme_minimal() +
+  theme(axis.title = element_blank(), panel.grid = element_blank(), axis.text = element_blank(), legend.position = "none") +
+  xlim(limits) + ylim(limits) +
+  transition_states(step, state_length = 1, transition_length = 3, wrap = F) +
+  ease_aes('exponential-in-out') +
+  labs(title = if (is_X) "X space projection" else "Omega space projection")
+
+animate(
+  p,
+  renderer = ffmpeg_renderer(format = "mp4", options = list(pix_fmt = "yuv420p", vcodec = "libx264")),
+  height = 610,
+  width = 600,
+  duration = 3,
+  fps = 25,
+  end_pause = 0,
+  res = 150
+)
+
+if (is_X) {
+  anim_save("../out/proj_animation_x.mp4")
+} else {
+  anim_save("../out/proj_animation_omega.mp4")
 }
 ```
 
