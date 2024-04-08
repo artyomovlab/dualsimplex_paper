@@ -293,7 +293,7 @@ plt <- dso$plot_projected(
   color_genes = which_marker(rownames(dso$get_data()), corner_genes),
   color_samples = which_marker(colnames(dso$get_data()), corner_cells),
   with_solution = T,
-  with_history = T, 
+  with_history = T,
   color_history = F,
   with_legend = F,
   use_dims = NULL
@@ -445,7 +445,7 @@ colnames(basis) <- seq(1, ncol(basis))
 plt <- pheatmap::pheatmap(
   basis[sele, ],
   cluster_rows = F,
-  cluster_cols = F, 
+  cluster_cols = F,
   color = colorRampPalette(c("blue", "white", "red"))(100),
   legend = F
 )
@@ -532,7 +532,7 @@ plt
 ```{r fig.width=20, fig.height=10}
 plotlist <- list()
 for (use_dims in list(2:3, 4:5, 6:7, 8:9)) {
-  pt_size = 0.7
+  pt_size <- 0.7
   plts <- dso$plot_projected(
     color_genes = "zero_distance",
     color_samples = as.factor(so_flt[, colnames(dso$get_data())]$ct),
@@ -544,7 +544,7 @@ for (use_dims in list(2:3, 4:5, 6:7, 8:9)) {
     wrap = F
   )
   linewidth <- 0.3
-  
+
   plotlist[[use_dims[[2]] - 1]] <- plts[[2]] + ggtitle("Cells") + theme(
     legend.position = "none",
     axis.line = element_line(color = "black", size = linewidth),
@@ -553,7 +553,7 @@ for (use_dims in list(2:3, 4:5, 6:7, 8:9)) {
     panel.grid = element_blank(),
     plot.title = element_text(size = 16, face = "bold")
   ) + xlab(paste0("S", use_dims[[1]])) + ylab(paste0("S", use_dims[[2]]))
-  
+
   plotlist[[use_dims[[1]] - 1]] <- plts[[1]] + ggtitle("Genes") + theme(
     legend.position = "none",
     axis.line = element_line(color = "black", size = linewidth),
@@ -582,12 +582,12 @@ corner_cells <- as.list(as.data.frame(
 ))
 ```
 
-```{r fig.width=5.5, fig.height=10}
+```{r fig.width=4, fig.height=8}
 plts <- dso$plot_projected(
   color_genes = which_marker(rownames(dso$get_data()), corner_genes),
   color_samples = which_marker(colnames(dso$get_data()), corner_cells),
   use_dims = NULL,
-  pt_size = pt_size,
+  pt_size = 1,
   with_legend = F,
   with_solution = T,
   with_history = T,
@@ -612,10 +612,23 @@ plts[[1]] <- plts[[1]] + ggtitle("Genes") + theme(
   plot.title = element_text(size = 14, face = "bold", vjust = -5, hjust = 0.02)
 ) + xlab("UMAP1") + ylab("UMAP2")
 
-plt <- cowplot::plot_grid(plotlist = plts, ncol = 1)
-ggsave("../out/sc_b_corners.svg", plt, width = 5.5, height = 10, device = svglite::svglite)
 
-plt
+ggsave(
+  "../out/sc_c_corners_genes.svg",
+  plts[[1]],
+  width = 4,
+  height = 4,
+  device = svglite::svglite
+)
+ggsave(
+  "../out/sc_c_corners_samples.svg",
+  plts[[2]],
+  width = 4,
+  height = 4,
+  device = svglite::svglite
+)
+
+cowplot::plot_grid(plotlist = plts, ncol = 1)
 ```
 
 ```{r, fig.width=26, fig.height=12}
@@ -659,7 +672,7 @@ plt <- ggplot(to_plot, aes(x = value, fill = Var2)) +
     panel.spacing.y = unit(1, "lines"),
     #strip.text = elem(),
     strip.background = element_blank()
-  ) + 
+  ) +
   scale_x_continuous(breaks = c(0, 1)) +
   xlab("Cell Type Proportion") +
   ylab("Number of cells") +
@@ -714,7 +727,7 @@ colnames(basis) <- seq(1, ncol(basis))
 plt <- pheatmap::pheatmap(
   t(basis[sele, ct_order]),
   cluster_rows = F,
-  cluster_cols = F, 
+  cluster_cols = F,
   color = colorRampPalette(c("blue", "white", "red"))(100),
   legend = F,
   gaps_col = col_gaps,

@@ -5,6 +5,7 @@ library(plotly)
 library(RColorBrewer)
 source("../R/plotly_methods.R")
 ```
+
 ```{r}
 set.seed(4)
 
@@ -12,6 +13,7 @@ N <- 1900
 M <- 2000
 K <-  3
 ```
+
 # Generate some data
 ```{r}
 
@@ -37,16 +39,16 @@ V_no_noise <-  V
 dso <-  DualSimplexSolver$new()
 dso$set_data(V, sinkhorn_iterations = 20)
 dso$project(3)
-dso$plot_projected("plane_distance", "plane_distance",with_solution=TRUE, use_dims = list(2:3))
+dso$plot_projected("plane_distance", "plane_distance", with_solution=TRUE, use_dims = list(2:3))
 
 ```
 ## 3D 
 
 
 ````{r fig.height = 15, fig.width = 15}
-points_col <- brewer.pal(9,"Blues")
+points_col <- brewer.pal(9, "Blues")
 plot_3d(round( dso$st$proj$X, 15), "V", size=6, colors=points_col)
-points_col <- brewer.pal(9,"Oranges")
+points_col <- brewer.pal(9, "Oranges")
 plot_3d(round(dso$st$proj$Omega, 15), "V", size=6,  colors=points_col)
 ```
 
