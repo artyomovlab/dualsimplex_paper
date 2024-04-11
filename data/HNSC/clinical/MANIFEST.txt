@@ -1,0 +1,9 @@
+id	filename	md5	size	state
+1799716d-8f71-4ab4-98ab-38b458706af8	1799716d-8f71-4ab4-98ab-38b458706af8/nationwidechildrens.org_clinical_follow_up_v4.8_hnsc.txt	fe2cd5263d751705efbf2d7ffdc54db3	167255	validated
+516e1008-c07e-4420-9b7b-dbbd219cae5e	516e1008-c07e-4420-9b7b-dbbd219cae5e/nationwidechildrens.org_clinical_patient_hnsc.txt	9bfb9a523c9d9a63cc0ecf1a9890304e	365652	validated
+52398f96-f15d-4468-bfc3-9692a1fb006f	52398f96-f15d-4468-bfc3-9692a1fb006f/nationwidechildrens.org_clinical_omf_v4.0_hnsc.txt	01b43b2e65b32e1aed469b18e669b638	21234	validated
+6864b01e-b2ba-4ea4-bfbc-5c8d11d5bd19	6864b01e-b2ba-4ea4-bfbc-5c8d11d5bd19/nationwidechildrens.org_clinical_nte_hnsc.txt	53f22d98a92906fa9698581467731292	8550	validated
+6f68e332-c561-4e3d-ad94-988c7319319b	6f68e332-c561-4e3d-ad94-988c7319319b/nationwidechildrens.org_clinical_radiation_hnsc.txt	d6e1536c9ae7bb98e0f1c8716d015559	117313	validated
+75d436b1-36db-470f-ae07-fec3b432336e	75d436b1-36db-470f-ae07-fec3b432336e/nationwidechildrens.org_clinical_drug_hnsc.txt	f9e948a972895b160274e541a4c73894	146066	validated
+c44d0dc3-f8ea-4bdb-804f-e9e6b2e4448b	c44d0dc3-f8ea-4bdb-804f-e9e6b2e4448b/nationwidechildrens.org_clinical_follow_up_v1.0_hnsc.txt	c2df5b23247c6c8667577117ecc63ea2	97994	validated
+e025640e-1c7d-41e4-8dd5-73822b67121c	e025640e-1c7d-41e4-8dd5-73822b67121c/nationwidechildrens.org_clinical_follow_up_v4.8_nte_hnsc.txt	38346ee21c703224eebf6fd55d49ff07	18057	validated

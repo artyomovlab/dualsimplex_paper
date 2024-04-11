@@ -1,0 +1,12 @@
+id	filename	md5	size	state
+1b5c3aaa-fc44-4bad-ae8a-d8c9fcbcafc8	1b5c3aaa-fc44-4bad-ae8a-d8c9fcbcafc8/nationwidechildrens.org_biospecimen_analyte_hnsc.txt	bcea1c17288f1894677149aaf645112a	764551	validated
+3f095e9f-4f38-4bee-901e-28d6e856d155	3f095e9f-4f38-4bee-901e-28d6e856d155/nationwidechildrens.org_biospecimen_portion_hnsc.txt	4e3488f9b965e55a561e4f7f42523c64	185435	validated
+5511fa2b-6d7f-4786-9cab-95467de4d41a	5511fa2b-6d7f-4786-9cab-95467de4d41a/nationwidechildrens.org_biospecimen_shipment_portion_hnsc.txt	22db6509ed5a0c850ef4f0f5e9c1f54f	55187	validated
+578f4c77-e2cc-4879-b1b0-ccad72379bcb	578f4c77-e2cc-4879-b1b0-ccad72379bcb/nationwidechildrens.org_biospecimen_aliquot_hnsc.txt	0aa91f8759716a82c7a582c5b0e4edb1	1003370	validated
+8c23310a-94ce-404c-ad1e-d34a94789743	8c23310a-94ce-404c-ad1e-d34a94789743/nationwidechildrens.org_biospecimen_diagnostic_slides_hnsc.txt	d71e29190caf7656e7daa6ef3ea0588f	49490	validated
+a1636b2e-aa56-47eb-a50d-c2142ff59f62	a1636b2e-aa56-47eb-a50d-c2142ff59f62/nationwidechildrens.org_biospecimen_protocol_hnsc.txt	cf9c4a67b213f9413d56acf8a3ba8ad9	354205	validated
+a3a17ec1-8d32-443d-83cc-ef32f6c3c478	a3a17ec1-8d32-443d-83cc-ef32f6c3c478/nationwidechildrens.org_auxiliary_hnsc.txt	5bfb0f816f78ee2731a9152076149886	61550	validated
+c06a00b1-8ed9-4d9d-8f09-23d0e056f3d8	c06a00b1-8ed9-4d9d-8f09-23d0e056f3d8/nationwidechildrens.org_biospecimen_slide_hnsc.txt	fe89097675d9b979192a00b9971562ab	194109	validated
+df12a103-6f49-467a-9056-37406e47324e	df12a103-6f49-467a-9056-37406e47324e/nationwidechildrens.org_ssf_tumor_samples_hnsc.txt	03c446b4a31820187ff0a14adb9404f2	150045	validated
+e095942f-3362-4564-b68c-f5dff1ea5a45	e095942f-3362-4564-b68c-f5dff1ea5a45/nationwidechildrens.org_ssf_normal_controls_hnsc.txt	fdf78a9f49d6ad666604b022b66f10e1	104665	validated
+e684c673-3af5-4a41-83e4-dfbdd6e1ba94	e684c673-3af5-4a41-83e4-dfbdd6e1ba94/nationwidechildrens.org_biospecimen_sample_hnsc.txt	775f9f083cebc9a8ce7a671b9feef05b	497455	validated
