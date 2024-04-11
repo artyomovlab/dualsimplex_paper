@@ -1,5 +1,5 @@
 ---
-title: "Application of DualSimplex to single cell data"
+title: "Figure 6: Application of DualSimplex to single cell data"
 output:
   html_document:
     df_print: paged
@@ -15,7 +15,7 @@ options("dualsimplex-rasterize" = T)
 ```
 
 ```{r}
-so <- readRDS("../../single_cell/GSE103322.rds")
+so <- readRDS("../data/large/GSE103322.rds")
 ```
 
 ```{r, fig.width=7, fig.height=5}
@@ -63,7 +63,6 @@ plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
 plot1 + plot2
 ```
 
-
 ```{r}
 dso <- DualSimplexSolver$new()
 dso$set_data(data[flt_genes, ])
@@ -73,24 +72,10 @@ dso$set_data(data[flt_genes, ])
 dso$plot_svd(1:1000)
 ```
 
-
 ```{r}
 dim(dso$get_data())
 ```
 
-```{r}
-d <- fData(dso$get_data())
-rem <- d$MT | d$RRNA | d$MIR | d$LOC | d$ORF | d$SNOR | d$RPLS
-sum(rem)
-```
-
-```{r}
-dso$basic_filter(
-  log_mad_gt = -Inf,
-  remove_true_cols_additional = c("MT", "RRNA", "MIR", "LOC", "ORF", "SNOR", "RPLS"),
-)
-dim(dso$get_data())
-```
 
 ```{r}
 dso$plot_mad()
@@ -100,7 +85,6 @@ dso$plot_svd()
 ```{r}
 dso$plot_svd(1:100)
 ```
-
 
 ```{r}
 dso$project(16)
@@ -114,7 +98,6 @@ dso$run_umap(neighbors_X = 30, neighbors_Omega = 15)
 dso$plot_projection_diagnostics()
 ```
 
-
 ```{r}
 dso$distance_filter(zero_d_lt = 0.2, genes = F)
 ```
@@ -125,7 +108,6 @@ dso$project(20)
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
 dso$plot_projection_diagnostics()
 ```
-
 
 ```{r}
 dso$distance_filter(zero_d_lt = 0.16, genes = F)
@@ -289,7 +271,7 @@ dso$plot_projected(
   with_history = F
 )
 
-plt <- dso$plot_projected(
+dso$plot_projected(
   color_genes = which_marker(rownames(dso$get_data()), corner_genes),
   color_samples = which_marker(colnames(dso$get_data()), corner_cells),
   with_solution = T,
@@ -307,9 +289,6 @@ dso$plot_projected(
   with_legend = F,
   use_dims = NULL
 )
-
-ggsave(file="../out/sc_b_corners.svg", plot=plt, width=10, height=5, device = svg)
-plt
 ```
 
 ```{r fig.width=5, fig.height=5}
@@ -329,12 +308,10 @@ ae <- AverageExpression(so_flt, group.py = "kmeans_cluster")
 write.csv(ae$RNA, "../out/pseudo_bulk_16ct.csv", quote = F)
 ```
 
-
 ```{r}
 cat_markers(dso$get_marker_genes())
 dso$save_solution("../out/single_cell_hnsc_save_3kg_16ct/")
 ```
-
 
 ```{r fig.width=20, fig.height=25}
 so <- add_list_markers(so, corner_genes)
@@ -390,26 +367,8 @@ V_ss <- dso$st$scaling$V_row
 m <- t(S) %*% S %*% V_ss %*% t(R) %*% R
 sum(m < 0) / (nrow(m) * ncol(m))
 
-#plot_matrix_hist_with_negative(m, bins = 100)
-
 all(is.na(res$W))
 ```
-
-
-```{r, fig.width=9, fig.height=5}
-rownames(res$H) <- dso$get_ct_names()
-colnames(res$H) <- colnames(dso$get_data())
-ggplot(reshape2::melt(t(res$H)), aes(x = Var2, y = value, fill = Var2)) +
-  geom_boxplot() +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 0, vjust = 0.8, hjust=0.5), axis.title.x = element_blank())
-```
-
-
-```{r}
-solution <- dso$finalize_solution(final_h_scaling = T)
-```
-
 
 ```{r fig.width = 14, fig.height = 6}
 dso$plot_projected("markers", use_dims = NULL, with_legend = T, pt_size = 0.9, with_history = F)
@@ -421,36 +380,6 @@ so <- add_list_markers(so, dso$get_marker_genes())
 
 ```{r fig.width=20, fig.height=25}
 plot_marker_enrichment(so, dso$get_ct_names(), limits = NULL)
-```
-
-```{r fig.width=4.5, fig.height=10}
-basis <- dso$get_solution()$W
-
-# Min-max scaling for display, like in phantasus
-basis <- as.data.frame(t(apply(basis, 1, function(x) (x - min(x)) / (max(x) - min(x)))))
-
-sele <- c(
-  "IFNG", "GBP5", "BATF2", "CXCL11", "FASLG", # ct1
-  "ACTA1", "MYL1", "CKM", "MB", # ct2
-  "SCGB3A1", "LYZ", "CDHR4", "AGR3", # ct3
-  "AKR1C1", "GSTM1", "CYP4F11", "UGT1A1", # ct4
-  "PAX1", "VCAM1", "SSTR2", "IL1R2", # ct5 — HPV
-  "MUC21", "MAL", "CRNN", "SPRR3", "KRT13", # ct6 - squamous cells
-  "COL1A1", "POSTN", "FAP", "SPARC", "FN1", # ct7 - fibroblasts
-  "KRTDAP", "LCE3D", "LCE3E", "LCE3A", # ct8 - late cornified epithelium
-  "CA9", "AREG", "CSF3", "FST" # ct9 — agressive cancer
-)
-sele <- unlist(get_signature_markers(dso$get_solution()$W, 5))
-colnames(basis) <- seq(1, ncol(basis))
-plt <- pheatmap::pheatmap(
-  basis[sele, ],
-  cluster_rows = F,
-  cluster_cols = F,
-  color = colorRampPalette(c("blue", "white", "red"))(100),
-  legend = F
-)
-#ggsave("../out/s2_typical_genes.svg", plt, width = 4.5, height = 10, device = svg)
-plt
 ```
 
 ```{r, fig.width=40, fig.height=20}
@@ -483,34 +412,6 @@ so_flt$dualsimplex_cluster <- apply(dso$get_solution()$H, 2, fn)[colnames(so_flt
 DimPlot(so_flt, group.by = "dualsimplex_cluster", label = T) + NoLegend() + ggtitle("") + NoAxes()
 ```
 
-# Seurat clustering for comparison
-```{r fig.width=10, fig.height=4}
-so_flt <- FindVariableFeatures(so_flt, selection.method = "vst", nfeatures = 2000)
-top10 <- head(VariableFeatures(so_flt), 10)
-
-plot1 <- VariableFeaturePlot(so_flt)
-plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
-plot1 + plot2
-```
-
-```{r}
-so_flt <- ScaleData(so_flt)
-so_flt <- RunPCA(so_flt, features = VariableFeatures(object = so_flt))
-DimPlot(so_flt, reduction = "pca") + NoLegend()
-```
-
-```{r}
-ElbowPlot(so_flt)
-```
-
-```{r}
-so_flt <- FindNeighbors(so_flt, dims = 1:15)
-```
-
-```{r, fig.width=7, fig.height=5}
-so_flt <- FindClusters(so_flt, resolution = 0.80175)
-DimPlot(so_flt, label=T)
-```
 
 # Figures
 ```{r}
@@ -566,8 +467,7 @@ for (use_dims in list(2:3, 4:5, 6:7, 8:9)) {
 
 plt <- cowplot::plot_grid(plotlist = plotlist, ncol = 4)
 
-ggsave("../out/sc_a_first_dims.svg", plt, width = 20, height = 10, device = svglite::svglite)
-
+ggsave("../out/sc_b_first_dims.svg", plt, width = 20, height = 10, device = svglite::svglite)
 plt
 ```
 
@@ -647,7 +547,7 @@ for (ctn in 1:dso$get_n_cell_types()) {
     )
 }
 plt <- cowplot::plot_grid(plotlist = plotlist, ncol = 6, scale = 1.05)
-ggsave("../out/sc_b_proportions.svg", plt, width = 26, height = 12, device = svglite::svglite)
+ggsave("../out/sc_d_proportions.svg", plt, width = 26, height = 12, device = svglite::svglite)
 plt
 ```
 
@@ -679,7 +579,7 @@ plt <- ggplot(to_plot, aes(x = value, fill = Var2)) +
   # ylim(c(0, 1000)) +
   facet_wrap(facets = vars(Var2), nrow = 4, scales = "free_y")
 
-ggsave("../out/sc_b_proportions_histograms.svg", plt, width = 12, height = 4, device = svglite::svglite)
+ggsave("../out/sc_d_proportions_histograms.svg", plt, width = 12, height = 4, device = svglite::svglite)
 
 plt
 ```
@@ -699,7 +599,7 @@ plt <- (DimPlot(so_flt, group.by = "dualsimplex_cluster", label = F, raster = T)
   NoAxes() +
   ggtitle("")) %>% LabelClusters(id = "dualsimplex_cluster", fontface = "bold", color = "black", repel = 0.1, size = 3, box = T)
 
-ggsave("../out/sc_b_clustering.svg", plt, width = 5, height = 5, device = svglite::svglite)
+ggsave("../out/sc_e_clustering.svg", plt, width = 5, height = 5, device = svglite::svglite)
 plt
 ```
 
@@ -735,7 +635,7 @@ plt <- pheatmap::pheatmap(
   angle_col = 315,
   fontsize_col = 10
 )
-ggsave("../out/sc_b_marker_genes.svg", plt, width = 15, height = 4, device = svglite::svglite)
+ggsave("../out/sc_f_marker_genes.svg", plt, width = 15, height = 4, device = svglite::svglite)
 ```
 
 

@@ -31,9 +31,9 @@ lo2$plot_projected("markers", use_dims = NULL, with_legend = T, with_history = F
 ```
 
 ```{r fig.width=6.5, fig.height=5}
-seurat_obj <- readRDS("../data/single_cell/GSE181919_integrated.rds")
-so_malignant <- readRDS("../data/single_cell/GSE181919_malignant_integrated.rds")
-so_epithelial <- readRDS("../data/single_cell/GSE181919_epithelial_integrated.rds")
+seurat_obj <- readRDS("../data/large/GSE181919_integrated.rds")
+so_malignant <- readRDS("../data/large/GSE181919_malignant_integrated.rds")
+so_epithelial <- readRDS("../data/large/GSE181919_epithelial_integrated.rds")
 
 plt <- Seurat::DimPlot(
   seurat_obj,
@@ -79,12 +79,23 @@ ggsave("../out/6f_malignant_subset_hpv.svg", plt, width = 4.7, height = 4, devic
 plt
 ```
 
-```{r, fig.width=7, fig.height=4}
-take_top_cells <- 20000
 
+```{r}
+table(seurat_obj$cell.type)
+```
+
+```{r, fig.width=7, fig.height=4}
 enrichment_map <- as.data.frame(seurat_obj@meta.data %>% group_by(cell.type) %>% summarize(
-  across(paste0(lo2$get_ct_names(), 1), list(function(x) { mean(tail(sort(x), take_top_cells)) })), .groups = "drop"
+  across(paste0(lo2$get_ct_names(), 1), list(function(x) {
+    if ((cur_column() == "cell_type_51")) {
+      tc <- 1000
+    } else {
+      tc <- take_top_cells
+    }
+    mean(tail(sort(x), tc))
+  })), .groups = "drop"
 ))
+
 rownames(enrichment_map) <- enrichment_map$cell.type
 enrichment_map$cell.type <- NULL
 colnames(enrichment_map) <- substr(colnames(enrichment_map), 1, nchar(colnames(enrichment_map)) - 3)
@@ -110,7 +121,7 @@ plt <- pheatmap::pheatmap(
   treeheight_col = 0,
   legend = F
 )
-ggsave("../out/6f_heatmap.svg", plt, width = 7, height = 4, device = svg)
+ggsave("../out/6f_heatmap.svg", plt, width = 7, height = 4, device = svglite::svglite)
 plt
 ```
 

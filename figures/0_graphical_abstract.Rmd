@@ -18,21 +18,27 @@ library(dplyr)
 set.seed(4)
 sim <- create_simulation(1000, 100, 3, with_marker_genes = T) %>% add_basis_samples()
 
-all_data <- data.frame()
-
-plotlist <- list()
-for (i in 1:10) {
-  scaling <- sinkhorn_scale(sim$data, i)
-  proj <- svd_project(scaling, 1:100)
-  dims <- 2:3
-  plotlist[[(i - 1) * 2 + 1]] <- plot_projection_points(proj, dims, spaces = "X")
-  plotlist[[i * 2]] <- plot_projection_points(proj, dims, spaces = "Omega")
-}
-# cowplot::plot_grid(plotlist = plotlist, ncol = 2)
+scaling <- sinkhorn_scale(sim$data, 10)
+proj <- svd_project(scaling, 1:100)
 ```
 
 
+
 # Sinkhorn research
+```{r, fig.width=4, fig.height=4}
+# 2:3 dim projections on different Sinkhorn iterations
+plotlist <- list()
+for (i in 1:10) {
+  this_scaling <- sinkhorn_scale(sim$data, i)
+  this_proj <- svd_project(this_scaling, 1:100)
+  dims <- 2:3
+  plotlist[[(i - 1) * 2 + 1]] <- plot_projection_points(this_proj, dims, spaces = "X")
+  plotlist[[i * 2]] <- plot_projection_points(this_proj, dims, spaces = "Omega")
+}
+
+plotlist
+```
+
 ```{r}
 data <- sim$data - rowMeans(sim$data)
 svd_ <- svd(data)
@@ -468,5 +474,3 @@ if (is_X) {
   anim_save("../out/optim_animation_omega.mp4")
 }
 ```
-
-

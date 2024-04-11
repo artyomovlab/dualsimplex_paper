@@ -1,0 +1,332 @@
+---
+title: "Figure 3C: Main Algorithm, Simulation"
+output: html_document
+---
+
+# Import package
+```{r}
+source('../R/setup.R')
+library(reshape2)
+library(ggplot2)
+library(dplyr)
+library(ggrepel)
+library(ggrastr)
+library(RColorBrewer)
+
+options("dualsimplex-rasterize" = T)
+```
+
+
+# Train model on simulated data
+## Create object
+```{r fig.height = 5, fig.width = 11}
+n_ct <- 3
+
+set.seed(3)
+sim <- create_simulation(n_genes = 10000,
+                         n_samples = 100,
+                         n_cell_types = n_ct,
+                         with_marker_genes = FALSE)
+sim <- sim %>% add_noise(noise_deviation = 0.2)
+
+data_raw <- sim$data
+true_basis <- sim$basis
+true_proportions <- sim$proportions
+
+dso <- DualSimplexSolver$new()
+dso$set_data(data_raw)
+
+plane_distance_threshold = 0.05 # Change here several times to see result, start with big and lower it
+dso$project(3)
+dso$distance_filter(plane_d_lt = plane_distance_threshold,
+                    zero_d_lt = NULL,
+                    genes = T)
+
+dso$project(3)
+dso$plot_svd_history()
+dso$init_solution("random")
+dso$plot_projected(
+  "zero_distance",
+  "zero_distance",
+  with_solution = TRUE,
+  use_dims = list(2:3)
+)
+```
+
+
+## Make specific init, which was in a paper
+```{r}
+set.seed(23)
+dso$init_solution("random")
+dso$plot_projected(
+  "plane_distance",
+  "plane_distance",
+  with_solution = TRUE,
+  use_dims = list(2:3)
+)
+```
+
+
+## Make 5000 steps of optimization
+```{r}
+blocks <- 5
+iterations <- 5000
+
+
+for (i in 1:blocks) {
+  dso$optim_solution(
+    round(iterations / blocks),
+    optim_config(
+      coef_hinge_H = 1,
+      coef_hinge_W = 1,
+      coef_der_X = 0.001,
+      coef_der_Omega = 0.001
+    )
+  )
+  curr_X <- dso$st$solution_proj$X  # this is how we can extract solution on a fly
+  curr_Omega <- dso$st$solution_proj$Omega # this is how we can extract solution on a fly
+}
+```
+
+```{r fig.height = 5, fig.width = 11}
+dso$plot_projected(
+  "zero_distance",
+  "zero_distance",
+  with_solution = TRUE,
+  use_dims = list(2:3)
+)
+```
+
+```{r}
+dso$plot_error_history()
+```
+
+
+## This is how extract metadata (terms for equations)
+```{r}
+solution_proj <- dso$st$solution_proj
+proj <-  dso$st$proj
+
+solution <- dso$finalize_solution()
+N <- dso$st$proj$meta$N
+M <- dso$st$proj$meta$M
+X <- solution_proj$X
+R <-  proj$meta$R
+S <-  dso$st$proj$meta$S
+Omega <- t(dso$st$solution_proj$Omega)
+ones_S <- as.matrix((rep(1, dim(S)[[2]])))
+ones_R <- as.matrix((rep(1, dim(R)[[2]])))
+ones_K <- as.matrix((rep(1, 3)))
+```
+
+
+## This is how to save the model
+```{r}
+dso$set_save_dir("../out/dualsimplex_save_fig3")
+dso$save_state()
+```
+
+
+## This is how to load model
+```{r}
+dso <- DualSimplexSolver$from_state("../out/dualsimplex_save_fig3")
+
+# Note: this wasn't saved, it's not included in state,
+# so we have to set it again
+dso$set_display_dims(list(NULL, 2:3)) 
+n_ct <- dso$st$n_cell_types
+```
+
+
+## Extract 5 uniformly distributed points from the training log
+```{r}
+solution_start_end <- get_solution_history(
+  dso$st$solution_proj,
+  iterations / blocks
+)
+X_hist <- as.data.frame(solution_start_end$X)
+Omega_hist <- as.data.frame(solution_start_end$Omega)
+
+colnames(X_hist) <- c("X", "Y", "Z", "k", "iteration")
+colnames(Omega_hist) <- c("X", "Y", "Z", "k", "iter")
+X_hist$i <-  rep(0:blocks, each = 3)
+Omega_hist$i <-  rep(0:blocks, each = 3)
+```
+
+
+# Save error how it appears in the paper
+```{r}
+plotErrorsWithRastr = function(metadata,
+                               variables = c(
+                                 "deconv_error",
+                                 "lamdba_error",
+                                 "beta_error",
+                                 "D_h_error",
+                                 "D_w_error",
+                                 "total_error"
+                               )) {
+  solution_proj <- metadata$st$solution_proj
+  error_statistics <- solution_proj$optim_history$errors_statistics
+  
+  toPlot <- data.frame(error_statistics[, variables])
+  
+  toPlot$iteration <- 0:(nrow(error_statistics) - 1)
+  toPlot <-
+    melt(toPlot, id.vars = "iteration", measure.vars = variables)
+  plt <-
+    ggplot(toPlot, aes(
+      x = iteration,
+      y = log10(value),
+      color = variable
+    )) +
+    # rasterise(geom_point(size=0.2),dpi=600) +
+    rasterise(geom_line(size = 0.8), dpi = 600) + theme_minimal() + labs(color =
+                                                                           "Errors")
+  return(plt)
+}
+
+errors_plot <-
+  plotErrorsWithRastr(dso,
+                      variables = c("deconv_error",
+                                    "lamdba_error",
+                                    "beta_error",
+                                    "total_error")) +
+  theme_minimal(base_size = 14, base_family = 'sans')
+
+
+ggsave(
+  file = "../out/3c_errors_trajectory.svg",
+  plot = errors_plot,
+  width = 5,
+  height = 3,
+  device = svglite::svglite
+)
+errors_plot
+```
+
+
+## Triangles as how they are in paper
+```{r}
+plot_gradient <- function(toPlot, endpoints, colors) {
+  blocks <- max(endpoints$i)
+  print(blocks)
+  
+  plt <- ggplot(toPlot, aes(x = Y, y = Z)) +
+    rasterise(geom_point(
+      color = colors[4],
+      size = 1,
+      alpha = 0.8
+    ), dpi = 600)
+  for (j in 0:(blocks - 1)) {
+    for (c in 1:n_ct) {
+      plt <- plt + geom_line(
+        data = endpoints %>%
+          filter(i %in% c(j, j + 1)) %>%
+          filter(k == c),
+        size = 1,
+        color = 'gray44'
+      )
+    }
+  }
+  
+  plt <- plt + geom_polygon(
+    data = endpoints %>% filter(i == 0),
+    size = 1,
+    fill = NA,
+    color = colors[7],
+    linetype = "dashed"
+  )  # triangle init
+  plt <-  plt  + geom_polygon(
+    data = endpoints %>% filter(i == blocks),
+    size = 1,
+    fill = NA,
+    color = colors[6]
+  )  # triangle final
+  plt <-  plt + geom_point(
+    data = endpoints %>% filter(i != blocks),
+    fill = colors[5],
+    color = colors[4],
+    size = 3,
+    shape = 21,
+    stroke = 1
+  )   # trajectory points
+  plt <-  plt  + geom_point(
+    data = endpoints %>% filter(i == blocks),
+    fill = colors[6],
+    color = colors[5],
+    size = 3,
+    shape = 21,
+    stroke = 1
+  ) # final result points
+  plt <- plt + geom_label_repel(data = endpoints,
+                                size = 5,
+                                mapping = aes(label = i)) + # label
+    theme_minimal(base_size = 25, base_family = 'sans') + theme(axis.line = element_blank(),
+                                                                text = element_text(size = 16))
+  plt
+}
+```
+
+
+## X
+```{r}
+dims <- 3
+points_col <- brewer.pal(9, "Blues")
+
+## plot X
+toPlot <- as.data.frame(dso$st$proj$X)[, 1:dims]
+colnames(toPlot) <- c("X", "Y", "Z")
+
+pltX <- plot_gradient(toPlot, X_hist, points_col)
+
+pltX <- pltX + xlab("R2") + ylab("R3")
+
+ggsave(
+  file = "../out/3c_x_optimization.svg",
+  plot = pltX,
+  width = 5,
+  height = 4,
+  device = svglite::svglite
+)
+pltX
+```
+
+
+## Omega 
+```{r}
+toPlot <- as.data.frame(dso$st$proj$Omega)[, 1:dims]
+colnames(toPlot) <- c("X", "Y", "Z")
+
+points_col <- brewer.pal(9, "Oranges")
+pltOmega <- plot_gradient(toPlot, Omega_hist, points_col)
+pltOmega <- pltOmega + xlab("S2") + ylab("S3")
+
+ggsave(
+  file = "../out/3c_omega_optimization.svg",
+  plot = pltOmega,
+  width = 5,
+  height = 4,
+  device = svglite::svglite
+)
+pltOmega
+```
+
+
+## Prepare basis/proportions plots
+```{r}
+solution <- dso$finalize_solution()
+names(solution)
+solution <- dso$get_solution()
+```
+
+```{r fig.width=20, fig.height=5}
+ptb <- coerce_pred_true_basis(solution$W, true_basis[rownames(solution$W), ])
+ptp <- coerce_pred_true_props(solution$H, true_proportions)
+plot_ptp_scatter(ptp)
+plot_ptb_scatter(ptb)
+```
+
+```{r}
+plot_ptp_lines(ptp)
+```
+

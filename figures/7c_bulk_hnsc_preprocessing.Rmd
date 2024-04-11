@@ -24,7 +24,7 @@ save_dir <- "../out/dualsimplex_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
 
 ## Data
 ```{r}
-data_raw <- as.matrix(readRDS("../data/HNSC/gene_counts.Rda"))
+data_raw <- as.matrix(readRDS("../data/large/HNSC.Rda"))
 data_raw <- remove_zero_rows(data_raw)
 data_raw <- linearize_dataset(data_raw)
 data_raw <- replace_duplicate_genes(data_raw)

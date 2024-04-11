@@ -17,7 +17,7 @@ options("dualsimplex-rasterize" = T)
 # Read data
 ```{r, fig.width=7, fig.height=5}
 dso <- DualSimplexSolver$from_state("../out/single_cell_hnsc_save_3kg_16ct/")
-so <- readRDS("../../single_cell/GSE103322.rds")
+so <- readRDS("../data/large/GSE103322.rds")
 ct_mapping = list(
   "0" = "Cancer",
   "Fibroblast" = "Fibroblast",

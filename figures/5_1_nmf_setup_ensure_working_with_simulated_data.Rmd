@@ -1,62 +1,26 @@
 ---
-title: "R Notebook"
+title: "Figure 5: NMF, Part 1."
 output: html_notebook
 ---
 
-# Imports
-
 
 ```{r}
-if (!require("NMF", quietly = TRUE))
-  install.packages("NMF")
-if (!require("hNMF", quietly = TRUE))
-  install.packages("hNMF")
-if (!require("ComplexHeatmap", quietly = TRUE))
-  BiocManager::install("ComplexHeatmap")
-if (!require("RcppML", quietly = TRUE))
-  install.packages('RcppML')
-if (!require("data.table", quietly = TRUE))
-  install.packages('data.table')
-
-if (!require("ggsignif", quietly = TRUE))
-  install.packages('ggsignif')
-if (!require("GEOquery", quietly = TRUE))
-  BiocManager::install("GEOquery")
-
-if (!require("linseed", quietly = TRUE))
-  devtools::install_github("ctlab/linseed")
-
-if (!require("gridExtra", quietly = TRUE))
-  install.packages('gridExtra')
-
-
-if (!require("ggpubr", quietly = TRUE))
-  install.packages('ggpubr')
-
-if (!require("svglite", quietly = TRUE))
-  install.packages('svglite')
-```
-
-
- 
-```{r}
-dir_to_save_fig <-  "../out/NMF/" # path to save everything
+dir_to_save_fig <- "../out/5_NMF/"
 dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
-source('../R/setup.R') # import main package
-source('../R/nmf_methods.R')  # nmf methods
+source('../R/setup.R')
+source('../R/nmf_methods.R')
 ```
 
 
 # Syntetic experiment 
-Here we use Syntetic data from NMF package just to check that everything is working fine
-(to visualize and check that everything work)
+Here we use Syntetic data from NMF package just to visualize and 
+check that everything works fine
+
 ## Make the NMF Data matrix
-
 ```{r}
-components_count <-  c(3, 4, 5)
-mixtures_count <-  c(25, 50, 100, 500)
+components_count <- c(3, 4, 5)
+mixtures_count <- c(25, 50, 100, 500)
 features_count <- c(200, 500, 1000, 2000)
-
 ```
 
 ```{r}
@@ -65,38 +29,73 @@ current_M <- features_count[[2]]
 current_N <- mixtures_count[[1]]
 ```
 
-
 ```{r}
-global_generated_data <- make_syntetic_data(M=current_M, N=current_N, K=current_K)
+global_generated_data <- make_syntetic_data(M = current_M, N = current_N, K = current_K)
 ```
-
 
 ```{r}
 plot_w_h_v(global_generated_data$true_W, global_generated_data$true_H, global_generated_data$V)
 ```
 
 
-## Solve this NMF using NMF package (3 different algorithms here)
-
+## Solve this NMF using the NMF package (3 different algorithms here)
 ```{r}
-res_methods <- NMF::nmf(global_generated_data$V, current_K, list('lee', 'brunet', 'nsNMF'), nrun=5, .options='kt')
+res_methods <-
+  NMF::nmf(
+    global_generated_data$V,
+    current_K,
+    list('lee', 'brunet', 'nsNMF'),
+    nrun = 5,
+    .options = 'kt'
+  )
 ```
 
+
 ```{r}
-res_halsAcc <-  NMF::nmf(global_generated_data$V, current_K, hNMF::HALSacc, nrun=5, .options='tk', name="HALSacc")
+res_halsAcc <-
+  NMF::nmf(
+    global_generated_data$V,
+    current_K,
+    hNMF::HALSacc,
+    nrun = 5,
+    .options = 'tk',
+    name = "HALSacc"
+  )
 res_methods[["HALSacc"]] <- res_halsAcc
-res_PGNMF <-  NMF::nmf(global_generated_data$V, current_K, hNMF::PGNMF, nrun=5, .options='tk', name="PGNMF")
+res_PGNMF <-
+  NMF::nmf(
+    global_generated_data$V,
+    current_K,
+    hNMF::PGNMF,
+    nrun = 5,
+    .options = 'tk',
+    name = "PGNMF"
+  )
 res_methods[["PGNMF"]] <- res_PGNMF
-res <-  NMF::nmf(global_generated_data$V, current_K, als_nmf_algorithm, nrun=5, .options='tk', name="ALS")
+res <-
+  NMF::nmf(
+    global_generated_data$V,
+    current_K,
+    als_nmf_algorithm,
+    nrun = 5,
+    .options = 'tk',
+    name = "ALS"
+  )
 res_methods[["ALS"]] <- res
 ```
 
 
 # Solve the same NMF problem using Dual Simplex Method
-
-
 ```{r}
-res <-  NMF::nmf(global_generated_data$V, current_K, dualsimplex_nmf_algorithm, nrun=5, .options='tk', name="DualSimplex")
+res <-
+  NMF::nmf(
+    global_generated_data$V,
+    current_K,
+    dualsimplex_nmf_algorithm,
+    nrun = 5,
+    .options = 'tk',
+    name = "DualSimplex"
+  )
 res_methods[["DualSimplex"]] <- res
 ```
 
@@ -115,12 +114,10 @@ lapply(res_methods, function (method_result_list){
   current_W <- method_result@fit@W
   current_H <- method_result@fit@H
   plot_w_h_v(current_W, current_H, current_W %*% current_H, method_result@method)
-  
 })
 ```
+
 ### RMSE errors
-
-
 ```{r, fig.height = 5, fig.width=20}
 data_used <- rep(list(global_generated_data), 10)
 distances_to_check <- plot_metrics_box(res_methods = res_methods, data_used=data_used, folder_to_save_results = dir_to_save_fig)
