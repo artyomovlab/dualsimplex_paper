@@ -54,75 +54,19 @@ Deconvolution of simulated bulk RNA-seq gene expression dataset with alternative
 -  TCGA HNSC dataset ([7c_bulk_hnsc_preprocessing.Rmd](figures/7c_bulk_hnsc_preprocessing.Rmd)), ([7de_bulk_hnsc_deconvolution.Rmd](figures/7de_bulk_hnsc_deconvolution.Rmd)), ([7f_bulk_hnsc_single_cell_validation.Rmd](figures/7f_bulk_hnsc_single_cell_validation.Rmd)), ([7g_bulk_hnsc_clinical_correlations.Rmd](figures/7g_bulk_hnsc_clinical_correlations.Rmd))
 
 ### S3. NMF with simulated data matrices
--  Factorize simulated dataset with multiple methods
--  Visualize results
-
-
-### S4. Different number of clusters for single cell data
-Comparison of the clustering solutions for different methods
-
-
-### S5. Further analysis for TCGA HNSC bulk RNA-seq dataset
-Pathway analysis, signature genes expression heatmap, multple initializations
-
-### S6. Signature base deconvolution with DualSimpelx approach
--  Brain/Liver/Lung mixtures GSE19830
--  Simulated brain dataset
-
-
-## Authors
-Contributors names and contact info 
-- Denis Kleverov ([@denis_kleverov](https://twitter.com/denis_kleverov)) ([linkedIn](https://linkedin.com/in/denklewer) )
--  Ekaterina Aladyeva ([AladyevaE](https://twitter.com/AladyevaE)) 
--  Alexey Serdyukov  ([email](mailto:leshaserdyukov@gmail.com))
--  prof. Maxim Artyomov ([@maxim_artyomov](https://twitter.com/maxim_artyomov)) ([email](mailto:martyomov@wustl.edu))
-
-
-
-## Figures in this repository
-### 2. Sinkhorn procedure
-Simple visualization of the Sinkhorn procedure applied to factorizable matrix 
-([2_sinkhorn_visualization.Rmd](figures/2_sinkhorn_visualization.Rmd))
-
-### 3. Main algorithm
-Deconvolution of simulated bulk RNA-seq gene expression dataset with main approach 
-([3c_simulated_gene_expression_main_algorithm.Rmd](figures/3c_simulated_gene_expression_main_algorithm.Rmd))
-### 4. Minimal formulation
-
-Deconvolution of simulated bulk RNA-seq gene expression dataset with alternative aproach 
-([4d_simulated_gene_expression_alternative_approach.Rmd](figures/4d_simulated_gene_expression_alternative_approach.Rmd))
-
-`you will need to switch the branch`
-### 5. Picture unmixing with NMF
-- Simple synthetic NMF case just for testing
-([5_1_nmf_setup_ensure_working_with_simulated_data.Rmd](figures/5_1_nmf_setup_ensure_working_with_simulated_data.Rmd))
-- Picture unmixing 
-    - Generate the data, solve problem with different methods ([5_2_nmf_noizy_pictures.Rmd](figures/5_2_nmf_noisy_pictures.Rmd))
-    - Visualize results  ([5_3_make_result_nmf_figure_plots.Rmd](figures/5_3_make_result_nmf_figure_plots.Rmd)
-)
-### 6. Single cell data
--  Method aplied to single cell clustering ([6_single_cell_hnsc.Rmd](figures/6_single_cell_hnsc.Rmd))
-
-### 7. Complete deconvolution of bulk RNA-seq data
--  Brain/Liver/Lung mixtures GSE19830 ([7a_gse19830.Rmd](figures/7a_gse19830.Rmd))
--  4 immune cell types GSE11058 ([7b_gse11058_7b.Rmd](figures/7b_gse11058_7b.Rmd))
--  TCGA HNSC dataset ([7c_bulk_hnsc_preprocessing.Rmd](figures/7c_bulk_hnsc_preprocessing.Rmd)), ([7de_bulk_hnsc_deconvolution.Rmd](figures/7de_bulk_hnsc_deconvolution.Rmd)), ([7f_bulk_hnsc_single_cell_validation.Rmd](figures/7f_bulk_hnsc_single_cell_validation.Rmd)), ([7g_bulk_hnsc_clinical_correlations.Rmd](figures/7g_bulk_hnsc_clinical_correlations.Rmd))
-
-### S3. NMF with simulated data matrices
--  Factorize simulated dataset with multiple methods
--  Visualize results
-
+-  Factorize simulated dataset with multiple methods ([s3c_1_nmf_simulated_data.Rmd](figures/s3c_1_nmf_simulated_data.Rmd))
+-  Visualize results ([s3c_1_nmf_simulated_data.Rmd](figures/s3c_2_make_result_figure_plots.Rmd))
 
 ### S4. Different number of clusters for single cell data
-Comparison of the clustering solutions for different methods
-
+Comparison of the clustering solutions for different methods  ([s4_single_cell_hnsc_different_k.Rmd](figures/s4_single_cell_hnsc_different_k.Rmd))
 
 ### S5. Further analysis for TCGA HNSC bulk RNA-seq dataset
-Pathway analysis, signature genes expression heatmap, multple initializations
+Pathway analysis, signature genes expression heatmap, multple initializations  ([s5_hnsc_further.Rmd](figures/s5_hnsc_further.Rmd))
 
 ### S6. Signature base deconvolution with DualSimpelx approach
--  Brain/Liver/Lung mixtures GSE19830
--  Simulated brain dataset
+-  Generate data ([s6_1_signature_based_deconvolution_make_mixed_data.Rmd](figures/s6_1_signature_based_deconvolution_make_mixed_data.Rmd))
+-  Brain/Liver/Lung mixtures GSE19830  ([s6_2_signature_based_deconvolution_GSE11058.Rmd](figures/s6_2_signature_based_deconvolution_GSE11058.Rmd))
+-  Simulated brain dataset ([s6_3_signature_based_deconvolution_brain.Rmd](figures/s6_3_signature_based_deconvolution_brain.Rmd))
 
 
 ## Authors
