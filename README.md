@@ -1,6 +1,6 @@
 # Non-negative matrix factorization and deconvolution as dual simplex problem
 
-This repository is an official starting point to explore [Dual Simplex NMF/deconvolution method](https://arxiv.org/abs/2030.12345)
+This repository is an official starting point to explore [Dual Simplex NMF/deconvolution method](https://www.biorxiv.org/content/10.1101/2024.04.09.588652v1)
 It contains code to reproduce figures from the paper, and at the same time, provides examples on how to use the [DualSimplex package](https://github.com/artyomovlab/dualsimplex).
 
 ```
