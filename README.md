@@ -37,7 +37,7 @@ Deconvolution of simulated bulk RNA-seq gene expression dataset with main approa
 Deconvolution of simulated bulk RNA-seq gene expression dataset with alternative aproach 
 ([4d_simulated_gene_expression_alternative_approach.Rmd](figures/4d_simulated_gene_expression_alternative_approach.Rmd))
 
-`you will need to switch the branch`
+
 ### 5. Picture unmixing with NMF
 - Simple synthetic NMF case just for testing
 ([5_1_nmf_setup_ensure_working_with_simulated_data.Rmd](figures/5_1_nmf_setup_ensure_working_with_simulated_data.Rmd))
@@ -133,7 +133,7 @@ Contributors names and contact info
 -  prof. Maxim Artyomov ([@maxim_artyomov](https://twitter.com/maxim_artyomov)) ([email](mailto:martyomov@wustl.edu))
 
 
-### Troubleshooting
+## Troubleshooting
 > Dependency: package 'xxx' is not available (for R version x.y.z)
 
 Install package directly from source link from CRAN. For example:
