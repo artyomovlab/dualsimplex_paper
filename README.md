@@ -4,7 +4,9 @@ This repository is an official starting point to explore [Dual Simplex NMF/decon
 It contains code to reproduce figures from the paper, and at the same time, provides examples on how to use the [DualSimplex package](https://github.com/artyomovlab/dualsimplex).
 
 ```
-Paper full reference here
+Non-negative matrix factorization and deconvolution as dual simplex problem
+Denis Kleverov, Ekaterina Aladyeva, Alexey Serdyukov, Maxim Artyomov
+bioRxiv 2024.04.09.588652; doi: https://doi.org/10.1101/2024.04.09.588652
 ```
 
 ### Project structure
