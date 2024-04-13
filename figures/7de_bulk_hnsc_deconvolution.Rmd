@@ -74,6 +74,8 @@ plt
 ### Get final solution in original space
 
 Simple negativity check
+
+
 ```{r}
 solution_scaled <- reverse_solution_projection(lo2$st$solution_proj, lo2$st$proj)
 sum(solution_scaled$W_col < 0) / length(solution_scaled$W_col)
@@ -85,10 +87,10 @@ res <- reverse_sinkhorn_c(solution_scaled$H_row,
                           lo2$st$scaling$D_vs_col,
                           lo2$st$scaling$iterations)
 
-plot_negative_proportions_change(lo2)
-plot_negative_basis_change(lo2)
-plot_matrix_hist_with_negative(solution_scaled$H_row, title = "Proportions distribution", bins = 100)
-plot_matrix_hist_with_negative(solution_scaled$W_col, title = "Basis distribution", bins = 100)
+lo2$plot_negative_proportions_change()
+lo2$plot_negative_basis_change()
+#plot_matrix_hist_with_negative(solution_scaled$H_row, title = "Proportions distribution", bins = 100)
+#plot_matrix_hist_with_negative(solution_scaled$W_col, title = "Basis distribution", bins = 100)
 
 R <- lo2$st$proj$meta$R
 S <- lo2$st$proj$meta$S
@@ -97,7 +99,7 @@ V_ss <- lo2$st$scaling$V_row
 m <- t(S) %*% S %*% V_ss %*% t(R) %*% R
 sum(m < 0) / (nrow(m) * ncol(m))
 
-plot_matrix_hist_with_negative(m, bins = 100)
+#plot_matrix_hist_with_negative(m, bins = 100)
 
 all(is.na(res$W))
 ```

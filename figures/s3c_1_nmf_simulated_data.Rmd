@@ -15,6 +15,9 @@ if (!require("ComplexHeatmap", quietly = TRUE))
   BiocManager::install("ComplexHeatmap")
 if (!require("RcppML", quietly = TRUE))
   install.packages('RcppML')
+if (!require("plotly", quietly = TRUE))
+  install.packages('plotly')
+
 ```
 
 
@@ -128,7 +131,9 @@ dso$plot_projected("zero_distance", "zero_distance", use_dims = NULL, with_solut
 
 ```{r}
 dso$plot_error_history()
-ggarrange(plot_negative_basis_change(dso), plot_negative_proportions_change(dso))
+
+
+ggarrange(dso$plot_negative_basis_change(), dso$plot_negative_proportions_change())
 ```
 
 ###Try to visualize solution
