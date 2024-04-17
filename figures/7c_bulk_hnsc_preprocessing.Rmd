@@ -398,7 +398,7 @@ lo2$plot_projected(use_dims = NULL, pt_size = 0.5)
 
 ```{r}
 # Checkpoint
-# lo2$save_state()
+lo2$save_state()
 # lo2 <- DualSimplexSolver$from_state(save_dir, save_there = T)
 ```
 
