@@ -6,17 +6,27 @@ output:
     self_contained: yes
 ---
 
+## Import packages
+
 ```{r}
 source("../R/setup.R")
 library(ggplot2)
 library(Seurat)
 library(systemfonts)
+library("DualSimplex")
 options("dualsimplex-rasterize" = T)
 ```
+## Read original data (Seurat object)
+
+You actually can use just matrix (see other examples)
 
 ```{r}
 so <- readRDS("../data/large/GSE103322.rds")
 ```
+
+
+## Set proper names for annotation
+Here we just rename some annotation names, to make it more readable.
 
 ```{r, fig.width=7, fig.height=5}
 ct_mapping = list(
@@ -35,6 +45,7 @@ so@meta.data[, "ct"] <- unname(sapply(so@meta.data$ct, function(x) ct_mapping[[x
 Idents(so) <- "ct"
 DimPlot(so)
 ```
+## Linearize the data
 
 ```{r}
 data <- so@assays$RNA@counts
@@ -42,109 +53,189 @@ data <- as.matrix(data)
 data <- 2^data
 dim(data)
 ```
+## Subset variable features
+Here we tak only 3000 most variable genes to make caluclations faster. 
+We use Seurat method to do this for now. 
+You can play with different types of filtering (e.g. MAD filtering).
 
-
-```{r}
-stat_list <- apply(data, 1, LogVMR)
-hist(stat_list, breaks = 100)
-```
+### Find variable features (genes)
 
 ```{r}
 so <- Seurat::FindVariableFeatures(so, nfeatures = 3000)
 flt_genes <- so@assays$RNA@var.features
 flt_genes <- flt_genes[flt_genes %in% rownames(data)]
 ```
+### Plot selected genes on VariableFeature plot
 
-
-```{r, fig.width=13, fig.height=5}
+```{r, fig.width=7, fig.height=5}
 top10 <- head(VariableFeatures(so), 10)
-plot1 <- VariableFeaturePlot(so)
-plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
-plot1 + plot2
+plot <- VariableFeaturePlot(so)
+plot <- LabelPoints(plot = plot, points = top10, repel = TRUE)
+plot
 ```
+### Finaly subset the data
+
+```{r}
+data <- data[flt_genes, ]
+```
+
+## DualSimplex method
+### Create an object
 
 ```{r}
 dso <- DualSimplexSolver$new()
-dso$set_data(data[flt_genes, ])
-```
-
-```{r}
-dso$plot_svd(1:1000)
-```
-
-```{r}
+dso$set_data(data) # This  will perform sinkhorn transformation. Can be time consuming for big matrices and weak PCs
 dim(dso$get_data())
 ```
 
-
-```{r}
-dso$plot_mad()
-dso$plot_svd()
-```
+### Inspect the data. Plot SVD to estimate number of clusters
+Usually it is not clearly visible how many clusters there are without additional filtering. 
+But our goal is to get some kind of elbow plot. The if for specific K the change in variance becomes minor, this is our K parameter.
 
 ```{r}
 dso$plot_svd(1:100)
 ```
+### Project data into low dimensional space.
+Let's start with number of clusters equal 16. 
+Since we Sinkhorn transformed matrix, the 16-dimensional space of  SVD vectors should represent simplex structures of our data points
 
+#### Projection itself
+This is how we project our points
 ```{r}
-dso$project(16)
+K <- 16
+dso$project(K)
 ```
+
+#### Visualize projeciton
+Since we can not plot 16 dimensions, we will use UMAP for visualization purposes. It seems that UMAP is able to catch this spatial distribution of simplexes. (corner points on UMAP are usually corners in original space)
 
 ```{r}
 dso$run_umap(neighbors_X = 30, neighbors_Omega = 15)
 ```
+```{r, fig.width=12, fig.height=6}
+dso$plot_projected(use_dims = NULL)
+```
+
+### Make several diagnostic plots to decide if we need to filter something
+Once we got some projection we now are insterested how good this projeciton is. Should we remove poitns or not.
+Here we combined several plots to look at
+- Histograms of zero/plain distance for both genes and samples
+Here we can see if some points are way to farm from the zero than others or they just don't fit into K-dimensional space. 
+Such points are usually outliers and we want to remove them
+- Plane/Zero disatance dimplot
+This is how to look into these number jontly. Point which is just far from the zero could be a corner of a simplex.
+But point which is far zero and also far from the hypotetical simplex is considered as outlier which ruins projection by pulling all the hyperplane to this point.
+- Points colored by these numbers
+This is again same thing but on umap. Sometimes you can visually see some small clusters which should be outliers.
+- SVD plot
+After removing noise in the data we should observe some improvement in this plot as well.
 
 ```{r, fig.width=12, fig.height=6}
 dso$plot_projection_diagnostics()
 ```
 
+### Filtering
+Let's now start filtering iterations. 
+For big and noisy data it is usually multiple iterations
+After each filtering we do projection again, since we removed poitns which were ruining the projecion and it could improve.
+
+#### Filtering step 1. Basic filter
+Here we remove some predefined "bad" genes. These are non-coding, mito and house keeeping genes.
+In general we have as set of regular expression filters for gene names.
+
+Note: we also have MAD filtering here, but since single cell is very different from the bulk data, we are not applying it by setting -inf threshold 
 ```{r}
-dso$distance_filter(zero_d_lt = 0.2, genes = F)
+dso$basic_filter(remove_true_cols_default=c("RPLS", "LOC", "ORF", "SNOR", "MT", "RRNA"), log_mad_gt = -Inf)
+dso$project(K)
 ```
 
+Repeat umap with new data
 ```{r, fig.width=12, fig.height=6}
-dso$plot_svd(1:100)
-dso$project(20)
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
 dso$plot_projection_diagnostics()
 ```
 
+####  Filtering step 2. Distance filter for samples
+remove sample points  with distance from zero higher than 0.16
 ```{r}
-dso$distance_filter(zero_d_lt = 0.16, genes = F)
+dso$distance_filter(zero_d_lt = 0.16, genes = F) # apply distance filter
+dso$project(K)
 ```
 
+Repeat umap with new data
 ```{r, fig.width=12, fig.height=6}
-dso$plot_svd()
-dso$project(20)
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
 dso$plot_projection_diagnostics()
 ```
 
+####  Filtering step 3. Distance filter for samples
+remove sample points  with distance from zero higher than 0.15
 ```{r}
-dso$distance_filter(plane_d_lt = 0.15, genes = T)
+dso$distance_filter(zero_d_lt = 0.15, genes = F) # apply distance filter
+dso$project(K)
 ```
 
+Repeat umap with new data
 ```{r, fig.width=12, fig.height=6}
-dso$plot_svd()
-dso$project(20)
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
 dso$plot_projection_diagnostics()
 ```
+
+#### Filtering step 4. Distance filter for genes (zero distance)
 
 ```{r}
 dso$distance_filter(zero_d_lt = 0.05, genes = T)
+dso$project(K)
 ```
 
+Repeat umap with new data
 ```{r, fig.width=12, fig.height=6}
-dso$plot_svd()
-dso$project(20)
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
 dso$plot_projection_diagnostics()
 ```
+#### Filtering step 5. Distance filter for genes (zero distance)
+
+```{r}
+dso$distance_filter(zero_d_lt = 0.05, genes = T)
+dso$project(K)
+```
+
+Repeat umap with new data
+```{r, fig.width=12, fig.height=6}
+dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
+dso$plot_projection_diagnostics()
+```
+
+
+#### Filtering step 6. Distance filter for samples (plane and zero distance)
+
+```{r}
+dso$distance_filter(zero_d_lt = 0.1, plane_d_lt = 0.2, genes = F)
+dso$project(K)
+```
+
+Repeat umap with new data
+```{r, fig.width=12, fig.height=6}
+dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
+dso$plot_projection_diagnostics()
+```
+
+
+#### Summarize filtering
+
+Just print all the steps you done
+```{r}
+dso$get_filtering_stats()
+```
+
+See what we removed on original Seurat UMAP
 
 ```{r, fig.width=7, fig.height=5}
 DimPlot(so, cells.highlight = list(filtered = colnames(so)[!colnames(so) %in% colnames(dso$get_data())]))
 ```
+
+### Subsample Seurat Object
+
 
 ```{r}
 so_flt <- so[, colnames(so) %in% colnames(dso$get_data())]
@@ -163,7 +254,7 @@ dso <- DualSimplexSolver$from_state("../out/single_cell_hnsc_save_3kg/")
 
 ## Final projection
 ```{r}
-dso$plot_svd(1:100)
+dso$plot_svd_history()
 ```
 
 ```{r}
@@ -199,7 +290,7 @@ cowplot::plot_grid(
 
 
 ```{r}
-dso$save_state("../out/single_cell_hnsc_save_3kg_16ct/")
+#dso$save_state("../out/single_cell_hnsc_save_3kg_16ct/")
 dso <- DualSimplexSolver$from_state("../out/single_cell_hnsc_save_3kg_16ct/")
 ```
 
@@ -307,11 +398,19 @@ DimPlot(so_flt, group.by = "kmeans_cluster", label=T) + NoLegend() + ggtitle("")
 ae <- AverageExpression(so_flt, group.py = "kmeans_cluster")
 write.csv(ae$RNA, "../out/pseudo_bulk_16ct.csv", quote = F)
 ```
+```{r}
+solution <- dso$finalize_solution()
+```
+
 
 ```{r}
 cat_markers(dso$get_marker_genes())
+```
+
+```{r}
 dso$save_solution("../out/single_cell_hnsc_save_3kg_16ct/")
 ```
+
 
 ```{r fig.width=20, fig.height=25}
 so <- add_list_markers(so, corner_genes)
@@ -328,8 +427,8 @@ sum(solution_scaled$W_col < 0) / length(solution_scaled$W_col)
 sum(solution_scaled$H_row < 0) / length(solution_scaled$H_row)
 plot_negative_proportions_change(dso$st$proj, dso$st$solution_proj)
 plot_negative_basis_change(dso$st$proj, dso$st$solution_proj)
-plot_matrix_hist_with_negative(solution_scaled$H_row, title = "Proportions distribution", bins = 100)
-plot_matrix_hist_with_negative(solution_scaled$W_col, title = "Basis distribution", bins = 100)
+#plot_matrix_hist_with_negative(solution_scaled$H_row, title = "Proportions distribution", bins = 100)
+#plot_matrix_hist_with_negative(solution_scaled$W_col, title = "Basis distribution", bins = 100)
 boxplot(rowSums(solution_scaled$H_row))
 boxplot(colSums(solution_scaled$W_col))
 ```
@@ -340,8 +439,8 @@ solution_scaled$H_row[solution_scaled$H_row < 0] <- 0
 solution_scaled$H_row <- t(apply(solution_scaled$H_row, 1, function(x) x / sum(x)))
 solution_scaled$W_col[solution_scaled$W_col < 0] <- 0
 solution_scaled$W_col <- apply(solution_scaled$W_col, 2, function(x) x / sum(x))
-plot_matrix_hist_with_negative(solution_scaled$H_row, title = "Proportions distribution", bins = 100)
-plot_matrix_hist_with_negative(solution_scaled$W_col, title = "Basis distribution", bins = 100)
+#plot_matrix_hist_with_negative(solution_scaled$H_row, title = "Proportions distribution", bins = 100)
+#plot_matrix_hist_with_negative(solution_scaled$W_col, title = "Basis distribution", bins = 100)
 boxplot(rowSums(solution_scaled$H_row))
 boxplot(colSums(solution_scaled$W_col))
 ```
@@ -354,8 +453,8 @@ res <- reverse_sinkhorn_c(solution_scaled$H_row,
                           dso$st$scaling$D_vs_col,
                           dso$st$scaling$iterations)
 
-plot_matrix_hist_with_negative(res$H, title = "Proportions distribution", bins = 100)
-plot_matrix_hist_with_negative(res$W, title = "Basis distribution", bins = 100)
+#plot_matrix_hist_with_negative(res$H, title = "Proportions distribution", bins = 100)
+#plot_matrix_hist_with_negative(res$W, title = "Basis distribution", bins = 100)
 boxplot(c(res$H))
 boxplot(c(res$W))
 boxplot(colSums(res$H))
