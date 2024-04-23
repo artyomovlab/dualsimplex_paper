@@ -15,6 +15,9 @@ library(Seurat)
 library(systemfonts)
 library("DualSimplex")
 options("dualsimplex-rasterize" = T)
+
+# For reproducibility
+knitr::opts_knit$set(root.dir = "/storage1/fs1/martyomov/Active/IndividualBackUps/chia-jung.l/git/dualsimplex_paper")
 ```
 ## Read original data (Seurat object)
 
@@ -54,7 +57,7 @@ data <- 2^data
 dim(data)
 ```
 ## Subset variable features
-Here we tak only 3000 most variable genes to make caluclations faster. 
+Here we take only 3000 most variable genes to make caluclations faster. 
 We use Seurat method to do this for now. 
 You can play with different types of filtering (e.g. MAD filtering).
 
@@ -117,10 +120,10 @@ dso$plot_projected(use_dims = NULL)
 ```
 
 ### Make several diagnostic plots to decide if we need to filter something
-Once we got some projection we now are insterested how good this projeciton is. Should we remove poitns or not.
+Once we got some projection we now are insterested in how good this projeciton is. Should we remove poitns or not.
 Here we combined several plots to look at
 - Histograms of zero/plain distance for both genes and samples
-Here we can see if some points are way to farm from the zero than others or they just don't fit into K-dimensional space. 
+Here we can see if some points are way too far from the zero than others or they just don't fit into K-dimensional space. 
 Such points are usually outliers and we want to remove them
 - Plane/Zero disatance dimplot
 This is how to look into these number jontly. Point which is just far from the zero could be a corner of a simplex.
