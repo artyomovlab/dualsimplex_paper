@@ -6,24 +6,24 @@ output:
     self_contained: yes
 ---
 
-## Import packages
-
-```{r}
-source("../R/setup.R")
+# Setup
+```{r setup}
+# source("../R/setup.R")
 library(ggplot2)
 library(Seurat)
 library(systemfonts)
-library("DualSimplex")
+library(magrittr)
+library(DualSimplex)
 options("dualsimplex-rasterize" = T)
 
-# For reproducibility
-knitr::opts_knit$set(root.dir = "/storage1/fs1/martyomov/Active/IndividualBackUps/chia-jung.l/git/dualsimplex_paper")
+# For reproducibility   
+# knitr::opts_knit$set(root.dir = "/scratch1/fs1/martyomov/chia-jung.l/project/dual-simplex-integration/dualsimplex_paper")
 ```
-## Read original data (Seurat object)
 
+
+# Read original data (Seurat object)
 You actually can use just matrix (see other examples)
-
-```{r}
+```{r load}
 so <- readRDS("../data/large/GSE103322.rds")
 ```
 
@@ -48,61 +48,59 @@ so@meta.data[, "ct"] <- unname(sapply(so@meta.data$ct, function(x) ct_mapping[[x
 Idents(so) <- "ct"
 DimPlot(so)
 ```
-## Linearize the data
 
+## Linearize the data
 ```{r}
 data <- so@assays$RNA@counts
 data <- as.matrix(data)
 data <- 2^data
 dim(data)
 ```
+
 ## Subset variable features
 Here we take only 3000 most variable genes to make caluclations faster. 
 We use Seurat method to do this for now. 
 You can play with different types of filtering (e.g. MAD filtering).
 
 ### Find variable features (genes)
-
 ```{r}
 so <- Seurat::FindVariableFeatures(so, nfeatures = 3000)
 flt_genes <- so@assays$RNA@var.features
 flt_genes <- flt_genes[flt_genes %in% rownames(data)]
 ```
-### Plot selected genes on VariableFeature plot
 
+### Plot selected genes on VariableFeature plot
 ```{r, fig.width=7, fig.height=5}
 top10 <- head(VariableFeatures(so), 10)
 plot <- VariableFeaturePlot(so)
 plot <- LabelPoints(plot = plot, points = top10, repel = TRUE)
 plot
 ```
-### Finaly subset the data
-
+## Finaly subset the data
 ```{r}
 data <- data[flt_genes, ]
 ```
 
-## DualSimplex method
-### Create an object
 
+# DualSimplex method
+## Create an object
 ```{r}
 dso <- DualSimplexSolver$new()
 dso$set_data(data) # This  will perform sinkhorn transformation. Can be time consuming for big matrices and weak PCs
 dim(dso$get_data())
 ```
 
-### Inspect the data. Plot SVD to estimate number of clusters
+## Inspect the data. Plot SVD to estimate number of clusters
 Usually it is not clearly visible how many clusters there are without additional filtering. 
 But our goal is to get some kind of elbow plot. The if for specific K the change in variance becomes minor, this is our K parameter.
-
 ```{r}
 dso$plot_svd(1:100)
 ```
-### Project data into low dimensional space.
+## Project data into low dimensional space.
 Let's start with number of clusters equal 16. 
 Since we Sinkhorn transformed matrix, the 16-dimensional space of  SVD vectors should represent simplex structures of our data points
 
-#### Projection itself
+### Projection itself
 This is how we project our points
 ```{r}
 K <- 16
@@ -150,96 +148,128 @@ Note: we also have MAD filtering here, but since single cell is very different f
 ```{r}
 dso$basic_filter(remove_true_cols_default=c("RPLS", "LOC", "ORF", "SNOR", "MT", "RRNA"), log_mad_gt = -Inf)
 dso$project(K)
+dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
 ```
 
 Repeat umap with new data
 ```{r, fig.width=12, fig.height=6}
-dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
 dso$plot_projection_diagnostics()
+
+DimPlot(so, cells.highlight = list(filtered = colnames(so)[!colnames(so) %in% colnames(dso$get_data())]))
+
 ```
 
-####  Filtering step 2. Distance filter for samples
-remove sample points  with distance from zero higher than 0.16
+
+####  Filtering step 2. Distance filter for genes
+Testing if we can keep more cells if we first remove outlier genes
 ```{r}
-dso$distance_filter(zero_d_lt = 0.16, genes = F) # apply distance filter
+dso$distance_filter(zero_d_lt = 0.1, genes = T) # apply distance filter
 dso$project(K)
-```
-
-Repeat umap with new data
-```{r, fig.width=12, fig.height=6}
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
-dso$plot_projection_diagnostics()
 ```
 
-####  Filtering step 3. Distance filter for samples
-remove sample points  with distance from zero higher than 0.15
+```{r visual-inspection, fig.width=12, fig.height=6}
+dso$plot_projection_diagnostics()
+
+DimPlot(so,
+        cells.highlight = list(filtered = colnames(so)[!colnames(so) %in% colnames(dso$get_data())]),
+        sizes.highlight = 0.1)
+```
+Looks like after gene-filtering, some extreme outlier cells are more close to the center.
+
+
+####  Filtering step 3. Distance filter for genes
+Testing if we can keep more cells if we first remove outlier genes
 ```{r}
-dso$distance_filter(zero_d_lt = 0.15, genes = F) # apply distance filter
+dso$distance_filter(zero_d_lt = 0.05, genes = T) # apply distance filter
 dso$project(K)
-```
-
-Repeat umap with new data
-```{r, fig.width=12, fig.height=6}
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
-dso$plot_projection_diagnostics()
 ```
 
-#### Filtering step 4. Distance filter for genes (zero distance)
+```{r visual-inspection, fig.width=12, fig.height=6}
+dso$plot_projection_diagnostics()
 
+DimPlot(so,
+        cells.highlight = list(filtered = colnames(so)[!colnames(so) %in% colnames(dso$get_data())]),
+        sizes.highlight = 0.1)
+```
+Looks like it doesn't change much. Now let's try filtering cells.
+
+
+####  Filtering step 4. Distance filter for cells
+Testing if we can keep more cells if we first remove outlier genes
 ```{r}
-dso$distance_filter(zero_d_lt = 0.05, genes = T)
+dso$distance_filter(zero_d_lt = 0.1, genes = F) # apply distance filter
 dso$project(K)
-```
-
-Repeat umap with new data
-```{r, fig.width=12, fig.height=6}
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
-dso$plot_projection_diagnostics()
 ```
-#### Filtering step 5. Distance filter for genes (zero distance)
 
+```{r visual-inspection, fig.width=12, fig.height=6}
+dso$plot_projection_diagnostics()
+
+DimPlot(so,
+        cells.highlight = list(filtered = colnames(so)[!colnames(so) %in% colnames(dso$get_data())]),
+        sizes.highlight = 0.1)
+```
+
+####  Filtering step 5. Distance filter for genes
+Testing if we can keep more cells if we first remove outlier genes
 ```{r}
-dso$distance_filter(zero_d_lt = 0.05, genes = T)
+dso$distance_filter(zero_d_lt = 0.05, genes = T) # apply distance filter
 dso$project(K)
-```
-
-Repeat umap with new data
-```{r, fig.width=12, fig.height=6}
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
-dso$plot_projection_diagnostics()
 ```
 
+```{r visual-inspection, fig.width=12, fig.height=6}
+dso$plot_projection_diagnostics()
 
-#### Filtering step 6. Distance filter for samples (plane and zero distance)
+DimPlot(so,
+        cells.highlight = list(filtered = colnames(so)[!colnames(so) %in% colnames(dso$get_data())]),
+        sizes.highlight = 0.1)
+```
 
+####  Filtering step 6. Distance filter for genes
+Testing if we can keep more cells if we first remove outlier genes
 ```{r}
-dso$distance_filter(zero_d_lt = 0.1, plane_d_lt = 0.2, genes = F)
+dso$distance_filter(zero_d_lt = 0.06, plane_d_lt = 0.12, genes = T) # apply distance filter
 dso$project(K)
-```
-
-Repeat umap with new data
-```{r, fig.width=12, fig.height=6}
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
+```
+
+```{r visual-inspection, fig.width=12, fig.height=6}
 dso$plot_projection_diagnostics()
+
+DimPlot(so,
+        cells.highlight = list(filtered = colnames(so)[!colnames(so) %in% colnames(dso$get_data())]),
+        sizes.highlight = 0.1)
+```
+It looks like the genes are kinda stable. Now let's do the final filtering on samples.
+
+
+####  Filtering step 7. Distance filter for samples
+Testing if we can keep more cells if we first remove outlier genes
+```{r}
+dso$distance_filter(zero_d_lt = 0.075, plane_d_lt = 0.2, genes = F) # apply distance filter
+dso$project(K)
+dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
+```
+
+```{r visual-inspection, fig.width=12, fig.height=6}
+dso$plot_projection_diagnostics()
+
+DimPlot(so,
+        cells.highlight = list(filtered = colnames(so)[!colnames(so) %in% colnames(dso$get_data())]),
+        sizes.highlight = 0.1)
 ```
 
 
-#### Summarize filtering
-
+### Summarize filtering
 Just print all the steps you done
 ```{r}
 dso$get_filtering_stats()
 ```
 
-See what we removed on original Seurat UMAP
-
-```{r, fig.width=7, fig.height=5}
-DimPlot(so, cells.highlight = list(filtered = colnames(so)[!colnames(so) %in% colnames(dso$get_data())]))
-```
-
-### Subsample Seurat Object
-
-
+## Subsample Seurat Object according to the filtering
 ```{r}
 so_flt <- so[, colnames(so) %in% colnames(dso$get_data())]
 ```
@@ -249,20 +279,22 @@ DimPlot(so_flt)
 ```
 
 
-```{r}
+```{r save}
 dso$save_state("../out/single_cell_hnsc_save_3kg/")
 dso <- DualSimplexSolver$from_state("../out/single_cell_hnsc_save_3kg/")
 ```
 
 
-## Final projection
+## Finalize projection
 ```{r}
-dso$plot_svd_history()
+dso$plot_svd_history(n_dims = 30)
 ```
+Observed that we obtain a steeper elbow plot after filtering, which indicates first few components
+explains more variance.
+
 
 ```{r}
-all_dims <- list(NULL, 2:3, 4:5, 6:7, 8:9, 10:11, 12:13, 14:15, 16:17, 18:19, 20:21)
-dso$project(16)
+dso$project(K)
 ```
 
 ```{r fig.width=13, fig.height=6}
@@ -282,6 +314,7 @@ dso$plot_projected(
 
 
 ```{r, fig.width=12, fig.height=6}
+# Plot zero_distance and plane_distance in the original UMAP
 so_flt$zero_distance <- pData(dso$get_data())[colnames(so_flt), "zero_distance"]
 so_flt$plane_distance <- pData(dso$get_data())[colnames(so_flt), "plane_distance"]
 pal <- rev(RColorBrewer::brewer.pal(11, "Spectral"))
@@ -292,52 +325,70 @@ cowplot::plot_grid(
 ```
 
 
-```{r}
-#dso$save_state("../out/single_cell_hnsc_save_3kg_16ct/")
+```{r save-state}
+dso$save_state("../out/single_cell_hnsc_save_3kg_16ct/")
+```
+
+
+
+# Optimizing deconvolution and clustering
+```{r load-state}
 dso <- DualSimplexSolver$from_state("../out/single_cell_hnsc_save_3kg_16ct/")
 ```
 
-
-## Solve deconvolution
-```{r, fig.width=12, fig.height=6}
-set.seed(21)
-dso$init_solution("select_x")
-dso$plot_projected()
-```
-
-
-## Optimize solution
-```{r fig.width = 14, fig.height = 6}
-dso$optim_solution(
-  650,
-  optim_config(
-    coef_hinge_H = 1,
-    coef_hinge_W = 1,
-    coef_der_X = 0.001,
-    coef_der_Omega = 0.1
-  )
-)
-dso$plot_projected(use_dims = NULL, with_legend = T, from_iter = 1, to_iter = 650)
-```
-
-
+Now we can start analyses with filtered data. Here we will use an adaptive learning rate and 
+coefficients for lambda and beta constrains.
 ```{r}
-lr <- 0.001
-dso$optim_solution(
-  1000,
-  optim_config(
-    coef_hinge_H = .01,
-    coef_hinge_W = .01,
-    coef_der_X = lr,
-    coef_der_Omega = lr
-  )
-)
-dso$plot_error_history()
+set.seed(42)
+dso$init_solution("random")
+start_with_hinge_H <-  1
+start_with_hinge_W <-  1
+RUNS_EACH_STEP <-  2000
+lr_decay <- 0.1
+LR_DECAY_STEPS <-  12
+PARAMETERS_INCREASE_STEPS <-  3
+lr_x <-  0.1
+lr_omega <-  0.1
+params_increase <- 100
+
+print(paste("current params", start_with_hinge_H, start_with_hinge_W))
+original_lambda_term <- start_with_hinge_H  #coef_hinge_H
+original_beta_term <- start_with_hinge_W #coef_hinge_W
+original_lr_x <-  lr_x
+original_lr_omega <-  lr_omega
+
+for  (lr_step in 1:LR_DECAY_STEPS) {
+  lambda_term <-  original_lambda_term * lr_x * lr_x
+  beta_term <- original_beta_term   * lr_omega * lr_omega
+  RUNS_EACH_STEP <-  RUNS_EACH_STEP * 0.7
+  for (incr_step in 1:PARAMETERS_INCREASE_STEPS) {
+    # Main training method, you can just run this
+    dso$optim_solution(RUNS_EACH_STEP, 
+                       optim_config(coef_hinge_H = lambda_term,
+                                    coef_hinge_W =beta_term,
+                                    coef_der_X = lr_x, 
+                                    coef_der_Omega = lr_omega,
+                                    coef_pos_D_w = 0,
+                                    coef_pos_D_h = 0
+                       ))
+    lambda_term <- lambda_term * params_increase
+    beta_term <-  beta_term * params_increase
+  }
+    lr_x <- lr_x * lr_decay
+    lr_omega <-  lr_omega * lr_decay
+
+  
+}
+solution <- dso$finalize_solution()
 ```
 
-
-```{r fig.width = 13, fig.height = 6}
+```{r visual-inspection, fig.width = 13, fig.height = 6}
 dso$plot_projected(use_dims = NULL, with_legend = T)
+
+dso$plot_error_history()
+
+dso$plot_negative_basis_change()
+dso$plot_negative_proportions_change()
 ```
 
 
@@ -353,6 +404,7 @@ corner_cells <- as.list(as.data.frame(
 ))
 kmeans_cells_clustering <- stats::kmeans(dso$st$proj$Omega, centers = dso$st$solution_proj$Omega)
 ```
+
 
 ```{r, fig.width=12, fig.height=6}
 dso$plot_projected(
@@ -393,135 +445,26 @@ gg_color_hue <- function(n) {
 
 so_flt$marker_cell <- which_marker(colnames(so), corner_cells)
 so_flt$kmeans_cluster <- kmeans_cells_clustering$cluster[colnames(so_flt)]
+
 DimPlot(so_flt, group.by = "marker_cell", na.value = "grey92", cols = gg_color_hue(dso$get_n_cell_types())) + NoLegend() + ggtitle("") + NoAxes()
 DimPlot(so_flt, group.by = "kmeans_cluster", label=T) + NoLegend() + ggtitle("") + NoAxes()
+DimPlot(so, label = T) + NoLegend() + ggtitle("") + NoAxes()
+DimPlot(so)
 ```
 
+```{r save-solution}
+dso$save_solution("../out/single_cell_hnsc_save_3kg_16ct/")
+```
+
+We will also saved the pseudo-bulk expression according to the clustering results.
 ```{r}
 ae <- AverageExpression(so_flt, group.py = "kmeans_cluster")
 write.csv(ae$RNA, "../out/pseudo_bulk_16ct.csv", quote = F)
 ```
-```{r}
-solution <- dso$finalize_solution()
-```
 
 
-```{r}
-cat_markers(dso$get_marker_genes())
-```
-
-```{r}
-dso$save_solution("../out/single_cell_hnsc_save_3kg_16ct/")
-```
-
-
-```{r fig.width=20, fig.height=25}
-so <- add_list_markers(so, corner_genes)
-plot_marker_enrichment(so, names(corner_genes), limits = NULL)
-```
-
-
-### Get final solution in original space
-
-Simple negativity check
-```{r}
-solution_scaled <- reverse_solution_projection(dso$st$solution_proj, dso$st$proj)
-sum(solution_scaled$W_col < 0) / length(solution_scaled$W_col)
-sum(solution_scaled$H_row < 0) / length(solution_scaled$H_row)
-plot_negative_proportions_change(dso$st$proj, dso$st$solution_proj)
-plot_negative_basis_change(dso$st$proj, dso$st$solution_proj)
-#plot_matrix_hist_with_negative(solution_scaled$H_row, title = "Proportions distribution", bins = 100)
-#plot_matrix_hist_with_negative(solution_scaled$W_col, title = "Basis distribution", bins = 100)
-boxplot(rowSums(solution_scaled$H_row))
-boxplot(colSums(solution_scaled$W_col))
-```
-
-```{r}
-# Fix negative proportions and basis
-solution_scaled$H_row[solution_scaled$H_row < 0] <- 0
-solution_scaled$H_row <- t(apply(solution_scaled$H_row, 1, function(x) x / sum(x)))
-solution_scaled$W_col[solution_scaled$W_col < 0] <- 0
-solution_scaled$W_col <- apply(solution_scaled$W_col, 2, function(x) x / sum(x))
-#plot_matrix_hist_with_negative(solution_scaled$H_row, title = "Proportions distribution", bins = 100)
-#plot_matrix_hist_with_negative(solution_scaled$W_col, title = "Basis distribution", bins = 100)
-boxplot(rowSums(solution_scaled$H_row))
-boxplot(colSums(solution_scaled$W_col))
-```
-
-```{r}
-# res <- reverse_solution_sinkhorn(solution_scaled, dso$st$scaling)
-res <- reverse_sinkhorn_c(solution_scaled$H_row,
-                          solution_scaled$W_col,
-                          dso$st$scaling$D_vs_row,
-                          dso$st$scaling$D_vs_col,
-                          dso$st$scaling$iterations)
-
-#plot_matrix_hist_with_negative(res$H, title = "Proportions distribution", bins = 100)
-#plot_matrix_hist_with_negative(res$W, title = "Basis distribution", bins = 100)
-boxplot(c(res$H))
-boxplot(c(res$W))
-boxplot(colSums(res$H))
-
-R <- dso$st$proj$meta$R
-S <- dso$st$proj$meta$S
-V_ss <- dso$st$scaling$V_row
-
-m <- t(S) %*% S %*% V_ss %*% t(R) %*% R
-sum(m < 0) / (nrow(m) * ncol(m))
-
-all(is.na(res$W))
-```
-
-```{r fig.width = 14, fig.height = 6}
-dso$plot_projected("markers", use_dims = NULL, with_legend = T, pt_size = 0.9, with_history = F)
-```
-
-```{r}
-so <- add_list_markers(so, dso$get_marker_genes())
-```
-
-```{r fig.width=20, fig.height=25}
-plot_marker_enrichment(so, dso$get_ct_names(), limits = NULL)
-```
-
-```{r, fig.width=40, fig.height=20}
-plotlist <- list()
-for (ct in dso$get_ct_names()) {
-  plotlist[[ct]] <- dso$plot_projected(ct, pmin(dso$get_solution()$H[ct, ], 1), with_history = F, with_solution = F, with_legend = F)
-}
-cowplot::plot_grid(plotlist=plotlist, ncol=4)
-```
-
-```{r, fig.width=20, fig.height=20}
-plotlist <- list()
-for (ct in dso$get_ct_names()) {
-  so_flt[[ct]] <- pmin(dso$get_solution()$H[ct, ], 0.5)
-  plotlist[[ct]] <- FeaturePlot(so_flt, feature = ct)
-}
-cowplot::plot_grid(plotlist=plotlist, ncol=4)
-```
-
-```{r fig.width=5, fig.height=5}
-fn <- function(x) {
-  mx <- which.max(x)
-  if (x[mx] > 0) {
-    return(mx)
-  } else {
-    return(NA)
-  }
-}
-so_flt$dualsimplex_cluster <- apply(dso$get_solution()$H, 2, fn)[colnames(so_flt)]
-DimPlot(so_flt, group.by = "dualsimplex_cluster", label = T) + NoLegend() + ggtitle("") + NoAxes()
-```
-
-
-# Figures
-```{r}
-dso <- DualSimplexSolver$from_state("../out/single_cell_hnsc_save_3kg_16ct/")
-```
-
-
-```{r, fig.width=7, fig.height=5}
+# Reproducing figure 6
+```{r, fig6a, fig.width=7, fig.height=5}
 plt <- DimPlot(so_flt, raster = T) +
   Seurat::NoAxes() +
   ggtitle("") +
@@ -532,7 +475,7 @@ plt
 ```
 
 
-```{r fig.width=20, fig.height=10}
+```{r fig6b, fig.width=20, fig.height=10}
 plotlist <- list()
 for (use_dims in list(2:3, 4:5, 6:7, 8:9)) {
   pt_size <- 0.7
@@ -573,18 +516,9 @@ ggsave("../out/sc_b_first_dims.svg", plt, width = 20, height = 10, device = svgl
 plt
 ```
 
-```{r, fig.width=12, fig.height=6}
-knns_genes <- FNN::get.knnx(dso$st$proj$X, dso$st$solution_proj$X, k = 40)
-corner_genes <- as.list(as.data.frame(
-  apply(knns_genes$nn.index, 1, function(x) rownames(dso$get_data())[x])
-))
-knns_cells <- FNN::get.knnx(dso$st$proj$Omega, dso$st$solution_proj$Omega, k = 70)
-corner_cells <- as.list(as.data.frame(
-  apply(knns_cells$nn.index, 1, function(x) colnames(dso$get_data())[x])
-))
-```
 
-```{r fig.width=4, fig.height=8}
+
+```{r fig6c, fig.width=4, fig.height=8}
 plts <- dso$plot_projected(
   color_genes = which_marker(rownames(dso$get_data()), corner_genes),
   color_samples = which_marker(colnames(dso$get_data()), corner_cells),
@@ -633,7 +567,8 @@ ggsave(
 cowplot::plot_grid(plotlist = plts, ncol = 1)
 ```
 
-```{r, fig.width=26, fig.height=12}
+
+```{r fig6d, fig.width=26, fig.height=12}
 plotlist <- list()
 for (ctn in 1:dso$get_n_cell_types()) {
   ct <- dso$get_ct_names()[[ctn]]
@@ -654,39 +589,41 @@ plt
 ```
 
 
-```{r, fig.width=12, fig.height=6}
-to_plot <- reshape2::melt(t(dso$get_solution()$H))
-to_plot$Var2 <- as.character(to_plot$Var2)
-to_plot$Var2 <- substr(to_plot$Var2, 11, nchar(to_plot$Var2))
-to_plot$Var2 <- factor(to_plot$Var2, levels = as.character(1:dso$get_n_cell_types()))
-to_plot <- to_plot[to_plot$value > 0.001, ]
-plt <- ggplot(to_plot, aes(x = value, fill = Var2)) +
-  geom_histogram(bins = 50) +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 0, vjust = 0.8, hjust=0.5, size = 10),
-    # axis.title.x = element_blank(),
-    axis.title.y = element_text(size = 16),
-    axis.title.x = element_text(size = 16),
-    legend.position= "none",
-    text = element_text(family = "Helvetica", size = 12),
-    panel.spacing.x = unit(2, "lines"),
-    panel.spacing.y = unit(1, "lines"),
-    #strip.text = elem(),
-    strip.background = element_blank()
-  ) +
-  scale_x_continuous(breaks = c(0, 1)) +
-  xlab("Cell Type Proportion") +
-  ylab("Number of cells") +
-  # ylim(c(0, 1000)) +
-  facet_wrap(facets = vars(Var2), nrow = 4, scales = "free_y")
 
-ggsave("../out/sc_d_proportions_histograms.svg", plt, width = 12, height = 4, device = svglite::svglite)
 
-plt
+```{r enrichment-mapping}
+# Above plot -> Fig. 6d
+enrichment_mapping <- c(
+  "V1" = 2,
+  "V2" = 12,
+  "V3" = 8,
+  "V4" = 10,
+  "V5" = 4,
+  "V6" = 1,
+  "V7" = 3,
+  "V8" = 6,
+  "V9" = 9,
+  "V10" = 14,
+  "V11" = 13,
+  "V12" = 11,
+  "V13" = 5,
+  "V14" = 7,
+  "V15" = 15,
+  "V16" = 16
+)
 ```
 
-```{r fig.width=5, fig.height=5}
+
+```{r check-if-any-missing}
+setdiff(1:16, enrichment_mapping)
+```
+All the cell type signatures reported are captured.
+
+
+
+
+
+```{r fig6e, fig.width=5, fig.height=5}
 fn <- function(x) {
   mx <- which.max(x)
   if (x[mx] > 0) {
@@ -705,17 +642,18 @@ ggsave("../out/sc_e_clustering.svg", plt, width = 5, height = 5, device = svglit
 plt
 ```
 
-```{r fig.width=17, fig.height=4}
+
+```{r fig6f, fig.width=17, fig.height=4}
 basis <- dso$get_solution()$W
 
 # Min-max scaling for display, like in phantasus
 basis <- as.data.frame(t(apply(basis, 1, function(x) (x - min(x)) / (max(x) - min(x)))))
 
 ct_order <- c(
-  1, 10, 13, 16,  # Fibroblasts
-  11, 2, 12, 5, 8,  # Cancer and near epithelium
-  6, 9, 7, 14, 15, 3,  # Immune
-  4  # Endothelial
+  6, 4, 11, 16,  # Fibroblasts
+  12, 1, 2, 13, 3,  # Cancer and near epithelium
+  8, 9, 14, 10, 15, 7,  # Immune
+  5  # Endothelial
 )
 n_markers <- 5
 gaps_after <- c(4, 9, 15)
@@ -738,6 +676,8 @@ plt <- pheatmap::pheatmap(
   fontsize_col = 10
 )
 ggsave("../out/sc_f_marker_genes.svg", plt, width = 15, height = 4, device = svglite::svglite)
+
+plt
 ```
 
 
