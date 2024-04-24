@@ -168,7 +168,7 @@ dso$project(K)
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
 ```
 
-```{r visual-inspection, fig.width=12, fig.height=6}
+```{r fig.width=12, fig.height=6}
 dso$plot_projection_diagnostics()
 
 DimPlot(so,
@@ -186,7 +186,7 @@ dso$project(K)
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
 ```
 
-```{r visual-inspection, fig.width=12, fig.height=6}
+```{r fig.width=12, fig.height=6}
 dso$plot_projection_diagnostics()
 
 DimPlot(so,
@@ -204,7 +204,7 @@ dso$project(K)
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
 ```
 
-```{r visual-inspection, fig.width=12, fig.height=6}
+```{r fig.width=12, fig.height=6}
 dso$plot_projection_diagnostics()
 
 DimPlot(so,
@@ -220,7 +220,7 @@ dso$project(K)
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
 ```
 
-```{r visual-inspection, fig.width=12, fig.height=6}
+```{r fig.width=12, fig.height=6}
 dso$plot_projection_diagnostics()
 
 DimPlot(so,
@@ -236,7 +236,7 @@ dso$project(K)
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
 ```
 
-```{r visual-inspection, fig.width=12, fig.height=6}
+```{r fig.width=12, fig.height=6}
 dso$plot_projection_diagnostics()
 
 DimPlot(so,
@@ -254,7 +254,7 @@ dso$project(K)
 dso$run_umap(neighbors_X = 20, neighbors_Omega = 15)
 ```
 
-```{r visual-inspection, fig.width=12, fig.height=6}
+```{r fig.width=12, fig.height=6}
 dso$plot_projection_diagnostics()
 
 DimPlot(so,
@@ -382,7 +382,7 @@ for  (lr_step in 1:LR_DECAY_STEPS) {
 solution <- dso$finalize_solution()
 ```
 
-```{r visual-inspection, fig.width = 13, fig.height = 6}
+```{r fig.width = 13, fig.height = 6}
 dso$plot_projected(use_dims = NULL, with_legend = T)
 
 dso$plot_error_history()
