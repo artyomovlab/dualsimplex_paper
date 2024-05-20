@@ -18,8 +18,8 @@ bioRxiv 2024.04.09.588652; doi: https://doi.org/10.1101/2024.04.09.588652
 ```
 
 ### Running
-1. Clone the DualSimplex repository, and put it in the same directory as this repository, for setup.R to work.
-2. Select a figure to reproduce.
+1. Select a figure to reproduce.
+2. Script `setup.R` (executed at the beginnig of the each script) will install the DualSimplex package using the github
 3. If you chose Figure 6 or Figure 7, download and unpack the contents of [large.tar.gz](https://drive.google.com/drive/folders/1SgL1sCW4ItfY1wH5kqh__5FJPO5W0ltS) into `data/large`. 
 4. Go to the `figures` directory and open the corresponding notebook.
 5. Run cells in the notebook one by one. Optionally, tweak some parameters to see alternative outcomes.
