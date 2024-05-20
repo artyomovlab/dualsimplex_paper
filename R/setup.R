@@ -1,3 +1,5 @@
-# Install Linseed 2
+# Install dualsimplex package
+library(devtools)
 unloadNamespace("dualsimplex")
-devtools::load_all("../../dualsimplex")
+devtools::install_github("artyomovlab/DualSimplex")
+#devtools::load_all("../../dualsimplex") to install from local directory
