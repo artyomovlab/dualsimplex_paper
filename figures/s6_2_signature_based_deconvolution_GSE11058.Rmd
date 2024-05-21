@@ -7,14 +7,33 @@ output: html_notebook
 Here we assume that data is already generated (see another file)
 You need to install CellMix to use dsa
 
+# Tricky installation
+Note: maximum R version supported by CellMix is 3.6. 
+(docker for this https://hub.docker.com/r/aladyevae/cellmix)
+Original package is not available for later version of R
+But we found a fork of this repo that is working
+```{r}
+# Before: copy CellMix folder we provided in our repo to .libPaths() folder
+if (!require("CellMix", quietly = TRUE))
+  devtools::install_github('denklewer/cellmix')
+library("CellMix")
+library(digest)
+library(matrixStats)
+library(dplyr)
+```
+
+
+
 # Imports 
 
 ```{r}
 # path to results and to save everything
-dir_to_save_fig <-  "../output_figures/signature_based_7a/"
+dir_to_save_fig <-  "../out/signature_based_S6a/"
+objects_save_dir <- "../out/signature_based_S6a/dso_objects"
+data_dir <- "../data/large/signature_based/GSE11058_benchmark/"
+
 dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
-
-
+dir.create(file.path(".", objects_save_dir), showWarnings = F, recursive = T)
 source('../R/setup.R') # import main package
 source("../R/figure_utils.R") # for same colors
 ```
@@ -26,15 +45,18 @@ library(preprocessCore)
 library(parallel)
 library(e1071)
 library(reshape2)
-source("additional_sources_used/CIBERSORT.R")
+library(ggplot2)
+library(svglite)
+source("../R/CIBERSORT.R")
 ```
 
 ## Download the data
 
 ```{r}
-data_full <- readRDS("data_used/GSE11058_benchmark/single_run_data_full.rds") 
-bas <- readRDS("data_used/GSE11058_benchmark/single_run_bas.rds")
-props <- readRDS("data_used/GSE11058_benchmark/single_run_props.rds")
+
+data_full <- readRDS(paste0(data_dir, "single_run_data_full.rds"))
+bas <- readRDS(paste0(data_dir,"single_run_bas.rds"))
+props <- readRDS(paste0(data_dir,"single_run_props.rds"))
 
 print(paste("Dim for the whole data:", toString(dim(data_full))))
 print(paste("Dim for proportions (H):", toString(dim(props))))
@@ -98,41 +120,36 @@ print(paste("Dim for the reduced data:", toString(dim(data_reduced))))
 
 
 ```{r}
-save_dir <- "./7_partial_figure_save/GSE11058_benchmark"
-lo2 <- Linseed2Solver$new()
-lo2$set_save_dir(save_dir)
-lo2$set_data(data_full)
-lo2$project(4)
-lo2$plot_svd_history()
+dso <- DualSimplexSolver$new()
+dso$set_save_dir(objects_save_dir)
+dso$set_data(data_full)
+dso$project(4)
+dso$plot_svd_history()
 ```
-```{r}
-lo2$init_solution("random")
-```
+## This is how we usually do the optimization
+Start in random solution points and optimize
 
 ```{r}
-
-lo2$optim_solution(5000, 
+dso$init_solution("random")
+dso$optim_solution(5000, 
                    optim_config(
                                 coef_der_X = 0.001, 
                                 coef_der_Omega = 0.001
                                 ))
 ## Extract solution for markers in original space
-solution <- lo2$finalize_solution()
-```
-
-```{r}
-lo2$plot_error_history()
+solution <- dso$finalize_solution()
+dso$plot_error_history()
 ```
 
 
-# Check pictures
-
+# Work with predefined markers
 
 ## Projected picture
-
+Here we just take prepared markers and plot them in projected space. 
+Expectation is that these previously selected markers will be in the corners.
 
 ```{r fig.width=9, fig.height=7}
-this_projection <- lo2$st$proj
+this_projection <- dso$st$proj
 ## Alternative methods to get full/reduced projections
 #data_reduced_scaled <- sinkhorn_scale(data_reduced, 20)
 #data_full_scaled <-  sinkhorn_scale(data_full, 20)
@@ -140,8 +157,8 @@ this_projection <- lo2$st$proj
 #proj_full <- svd_project(data_full_scaled, 1:ntypes)
 
 
-lo2$st$marker_genes <- marker_list
-colors <-  which_marker(rownames(fData(lo2$st$data)), lo2$st$marker_genes)
+dso$st$marker_genes <- marker_list
+colors <-  which_marker(rownames(fData(dso$st$data)), dso$st$marker_genes)
 
 plot_projection_points(this_projection, 
                        spaces = c("X"), 
@@ -160,8 +177,8 @@ plot_projection_points(this_projection,
 ```{r}
 library(plotly)
 
-lo2$st$marker_genes <- marker_list
-colors <-  which_marker(rownames(fData(lo2$st$data)), lo2$st$marker_genes)
+dso$st$marker_genes <- marker_list
+colors <-  which_marker(rownames(fData(dso$st$data)), dso$st$marker_genes)
 
 font <- list(
   family = "Helvetica",
@@ -175,7 +192,7 @@ ax_settings <- list(title = '',
                     ticks = '', 
                     showticklabels = F, 
                     titlefont = font)
-to_plot <- as.data.frame(lo2$st$proj$X)
+to_plot <- as.data.frame(dso$st$proj$X)
 to_plot$color <- as.character(colors)
 to_plot$color[is.na(to_plot$color)] <- "grey70"
 plotly::plot_ly(
@@ -200,28 +217,28 @@ plotly::plot_ly(
                                                               height = 600))
 
 ```
-## Projected picture using lo object method. (color by zero distance)
-
+## Projected picture using dso object method. (color by zero distance)
+We can initialize solution in the coordinates of markers
 
 ```{r}
-#lo2$init_solution("marker_means", marker_list=marker_list)
-lo2$plot_projected("zero_distance", "zero_distance", use_dims = list(3:4), with_solution = T)
+dso$init_solution("marker_means", marker_list=marker_list)
+dso$plot_projected("zero_distance", "zero_distance", use_dims = list(3:4), with_solution = T)
 ```
 ## Make umap plot (only for visualization purposes)
 
 ```{r}
-lo2$run_umap(neighbors_X = 20, neighbors_Omega = 20)
+dso$run_umap(neighbors_X = 20, neighbors_Omega = 20)
 ```
 
 ```{r}
-lo2$plot_projected("zero_distance", "zero_distance", use_dims = list(NULL,3:4), with_solution = T)
+dso$plot_projected("zero_distance", "zero_distance", use_dims = list(NULL,3:4), with_solution = T)
 ```
 
 
 ```{r fig.width=9, fig.height=7}
-lo2$st$marker_genes <- marker_list
-colors <-  which_marker(rownames(fData(lo2$st$data)), lo2$st$marker_genes)
-plot_projection_points(lo2$st$proj,  spaces = c("X"), pt_size = 2, color=colors) +
+dso$st$marker_genes <- marker_list
+colors <-  which_marker(rownames(fData(dso$st$data)), dso$st$marker_genes)
+plot_projection_points(dso$st$proj,  spaces = c("X"), pt_size = 2, color=colors) +
   scale_color_manual(values = colors_v, na.value = adjustcolor("grey70", alpha.f = 0.7)) + 
   labs(col = "Marker Cell Type", x = "UMAP1", y = "UMAP2") +
   theme_bw(base_family = "sans", base_size = 18) +
@@ -235,7 +252,7 @@ plot_projection_points(lo2$st$proj,  spaces = c("X"), pt_size = 2, color=colors)
 
 ```{r}
 save_pt <- function(
-  this_H, this_W, model_n, rep_n, dir = "gse11058_partial_data", other_H = props, other_W = bas
+  this_H, this_W, model_n, rep_n, dir = objects_save_dir, other_H = props, other_W = bas
 ) {
   other_H <- other_H[names(marker_list), ]
   other_W <- other_W[, names(marker_list)]
@@ -255,7 +272,7 @@ save_pt <- function(
   }
 }
 
-read_pt <- function(model_n, rep_n, sig = DS_NAME, dir = "gse11058_partial_data") {
+read_pt <- function(model_n, rep_n, sig = DS_NAME, dir = objects_save_dir) {
   ptp_name <- paste0(dir, "/", model_n , "/", rep_n, "_ptp_", sig, ".rds")
   ptp <- readRDS(ptp_name)
   ptb_name <- paste0(dir, "/", model_n, "/", rep_n, "_ptb_", sig, ".rds")
@@ -265,12 +282,14 @@ read_pt <- function(model_n, rep_n, sig = DS_NAME, dir = "gse11058_partial_data"
 ```
 
 
+
+
 ```{r fig.width=20, fig.height=5}
 for (rep_n in seq(1, 5)) {
   # Read data
-  data_full <- readRDS(paste0("data_used/GSE11058_benchmark/",rep_n,"_run_data_full.rds")) 
-  bas <- readRDS(paste0("data_used/GSE11058_benchmark/",rep_n,"_run_bas.rds"))
-  props <- readRDS(paste0("data_used/GSE11058_benchmark/",rep_n,"_run_props.rds"))
+  data_full <- readRDS(paste0(data_dir,rep_n,"_run_data_full.rds")) 
+  bas <- readRDS(paste0(data_dir, rep_n, "_run_bas.rds"))
+  props <- readRDS(paste0(data_dir, rep_n, "_run_props.rds"))
   
   # Get Signature markers from 'bas'
   marker_list <- get_signature_markers(bas, n_marker_genes = 60)
@@ -300,22 +319,22 @@ for (rep_n in seq(1, 5)) {
   data <- data_full[intersect(unlist(marker_list), rownames(data_full)), ]
   
   # Run linseed2
-  lo2 <- Linseed2Solver$new()
-  lo2$set_save_dir(save_dir)
-  lo2$set_data(data)
-  lo2$project(4)
-  lo2$init_solution("marker_means", marker_list=marker_list)
-  lo2$optim_solution(3, 
+  dso <- DualSimplexSolver$new()
+  dso$set_save_dir(objects_save_dir)
+  dso$set_data(data)
+  dso$project(4)
+  dso$init_solution("marker_means", marker_list=marker_list)
+  dso$optim_solution(3, 
                      optim_config(coef_hinge_W = 0.0001,
                                   coef_der_X = 0, 
                                   coef_der_Omega = 0
                                   ))
   ## Extract solution for markers in original space
-  solution <- lo2$finalize_solution()
+  solution <- dso$finalize_solution()
   H_res <- solution$H
   W_mark <- solution$W
-  X_mark <- - lo2$st$solution_proj$X  
-  Omega_mark <- t(lo2$st$solution_proj$Omega)
+  X_mark <- dso$st$solution_proj$X  
+  Omega_mark <- t(dso$st$solution_proj$Omega)
   
   ## Get W for the whole data based on proportions
   res <- nnls_C__(t(H_res), t(data_full))
@@ -323,7 +342,7 @@ for (rep_n in seq(1, 5)) {
   colnames(W_full) <- paste0("Cell_type_", 1:ntypes)
   
   ## Save result
-  save_pt(H_res, W_full, "linseed2", rep_n, dir=save_dir)
+  save_pt(H_res, W_full, "dualsimplex", rep_n, dir=objects_save_dir)
   
   # Run CIBERSORT
   cib <- CIBERSORT(
@@ -335,7 +354,7 @@ for (rep_n in seq(1, 5)) {
     )
   H_res <- t(cib)
   H_res <- H_res[names(marker_list), ]
-  save_pt(H_res, NULL, "cib", rep_n,  dir=save_dir)
+  save_pt(H_res, NULL, "cib", rep_n,  dir=objects_save_dir)
   
   # Run DSA (comment if no CellMix installed)
   dsa <- CellMix::ged(as.matrix(data_full), 
@@ -344,25 +363,26 @@ for (rep_n in seq(1, 5)) {
                       verbose = F) 
   H_res <- coef(dsa)
   W_full <- basis(dsa)
-  save_pt(H_res, W_full, "dsa", rep_n,  dir=save_dir)
+  save_pt(H_res, W_full, "dsa", rep_n,  dir=objects_save_dir)
   
 }
 ```
 
+
 ##  Read results and produce plots 
 
 ```{r fig.height=7, fig.width=5}
-models <- c("linseed2", "cib", "dsa")
+models <- c("dualsimplex", "cib", "dsa")
 signatures <- list("GSE11058")
 
 total_rmses <- data.frame()
 for (rep_n in seq(1, 5)) {
   this_dfs <- lapply(models, function(model) {
     results <- lapply(signatures, function(sig) {
-      read_pt(model, rep_n, sig, dir=save_dir)$ptp
+      read_pt(model, rep_n, sig, dir=objects_save_dir)$ptp
     })
     rmses <- sapply(results, function(res) {
-      sapply(rownames(res[[1]]), function(ct) rmse(res[[1]][ct, ], res[[2]][ct, ]))
+      sapply(rownames(res[[1]]), function(ct) Metrics::rmse(res[[1]][ct, ], res[[2]][ct, ]))
     })
     colnames(rmses) <- signatures
     rmses <- melt(rmses)
@@ -371,8 +391,8 @@ for (rep_n in seq(1, 5)) {
       rmses$model <- "CIBERSORT"
     } else if (model == "dsa") {
       rmses$model <- "DSA"
-    } else if (model == "linseed2") {
-      rmses$model <- "Linseed 2"
+    } else if (model == "dualsimplex") {
+      rmses$model <- "DualSimplex"
     }
     rmses$rep <- rep_n
     rmses
@@ -408,7 +428,7 @@ ggsave(file=filename, plot=res_plot, width=5, height=7, device=svg)
 res_plot
 ```
 ```{r}
-res <- read_pt("linseed2", 2,dir=save_dir,)
+res <- read_pt("dualsimplex", 2,dir=objects_save_dir,)
 ptp <- res$ptp
 ptb <- res$ptb
 ```
@@ -420,8 +440,9 @@ library(svglite)
 ```
 
 ```{r, fig.width=20, fig.height=5}
-proportions_plot <- plot_ptp_scatter(ptp)
+options("dualsimplex-rasterize" = FALSE)
 
+proportions_plot <- plot_ptp_scatter(ptp)
 filename <- paste0(dir_to_save_fig, "7_2_3_proportions_plot.svg")
 
 ggsave(file=filename, plot=proportions_plot, width=20, height=5, device=svglite)
@@ -430,12 +451,12 @@ ggsave(file=filename, plot=proportions_plot, width=20, height=5, device=svglite)
 ```
 
 ```{r, fig.width=20, fig.height=5}
-options("linseed-rasterize" = TRUE)
-expressions_plot <- plot_ptb_scatter(ptb, max_expr = 18)
+options("dualsimplex-rasterize" = TRUE)
+expressions_plot <- plot_ptb_scatter(ptb, max_expr = 18) 
 
-filename <- paste0(dir_to_save_fig, "7_2_4_expressions_plot.svg")
+filename <- paste0(dir_to_save_fig, "7_2_4_expressions_plot.svg") 
 
-ggsave(file=filename, plot=expressions_plot, width=20, height=5, device=svglite)
+ggsave(file=filename, plot=expressions_plot, width=16, height=4, device=svglite)
 
 ```
 
