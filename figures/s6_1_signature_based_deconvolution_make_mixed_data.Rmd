@@ -3,14 +3,34 @@ title: "R Notebook"
 output: html_notebook
 ---
 
+# Repeat of partial figure GSE11058
+Here we assume that data is already generated (see another file)
+You need to install CellMix to use dsa
+
+## Tricky installation
+
+Note: maximum R version supported by CellMix is 3.6. 
+(docker for this https://hub.docker.com/r/aladyevae/cellmix)
+Original package is not available for later version of R
+But we found a fork of this repo that is working
+```{r}
+# Before: copy CellMix folder we provided in our repo to .libPaths() folder
+if (!require("CellMix", quietly = TRUE))
+  devtools::install_github('denklewer/cellmix')
+library("CellMix")
+library(digest)
+library(matrixStats)
+library(dplyr)
+```
+
+
 # Make Mixed Dataset
 
 
-Note: maximum R version supported by CellMix is 3.6. But inserting installed package to newer versions of R seems to work fine.
-(docker for this https://hub.docker.com/r/aladyevae/cellmix)
 
 ```{r}
- BiocManager::install('GEOquery')
+if (!require("GEOquery", quietly = TRUE))
+  BiocManager::install('GEOquery')
 # BiocManager::install('Metrics')
 # BiocManager::install('uwot')
 #BiocManager::install('tidyverse')
@@ -23,6 +43,7 @@ library(GEOquery)
 ```
 
 ```{r}
+dir_to_save <-  "../data/large/signature_based/GSE11058_benchmark/"
 DS_NAME <- "GSE11058"
 n_markers <- 20
 ```
@@ -32,10 +53,10 @@ GSE19830.em <- ExpressionMix("GSE11058", verbose=TRUE)
 ```
 
 ```{r}
-props <- coef(GSE19830.em)
+props <- coef(GSE11058.em)
 
-ex <- exprs(GSE19830.em)
-bas <- basis(GSE19830.em)
+ex <- exprs(GSE11058.em)
+bas <- basis(GSE11058.em)
 
 ex <- ex[log2(apply(ex, 1, mad)) > 8, ]
 bas <- bas[rownames(ex),]
@@ -49,10 +70,10 @@ colnames(bas) <- gsub(" |-", "_", colnames(bas))
 ## Save it to use in another R version
 
 ```{r}
-saveRDS(GSE19830.em, "data_used/GSE11058_benchmark/single_run_em.rds")
-saveRDS(bas, "data_used/GSE11058_benchmark/single_run_bas.rds")
-saveRDS(props, "data_used/GSE11058_benchmark/single_run_props.rds")
-saveRDS(data_full, "data_used/GSE11058_benchmark/single_run_data_full.rds")
+saveRDS(GSE11058.em, paste0(dir_to_save, "single_run_em.rds"))
+saveRDS(bas, paste0(dir_to_save, "single_run_bas.rds"))
+saveRDS(props, paste0(dir_to_save, "single_run_props.rds"))
+saveRDS(data_full, paste0(dir_to_save, "/single_run_data_full.rds"))
 
 ```
 
@@ -62,20 +83,20 @@ saveRDS(data_full, "data_used/GSE11058_benchmark/single_run_data_full.rds")
 for (rep_n in seq(1,5)) {
   set.seed(rep_n)
   DS_NAME <- "GSE11058"
-  GSE19830.em <- ExpressionMix("GSE11058", verbose=TRUE)
-  props <- coef(GSE19830.em)
-  ex <- exprs(GSE19830.em)
-  bas <- basis(GSE19830.em)
+  GSE11058.em <- ExpressionMix("GSE11058", verbose=TRUE)
+  props <- coef(GSE11058.em)
+  ex <- exprs(GSE11058.em)
+  bas <- basis(GSE11058.em)
   ex <- ex[sample(nrow(ex), nrow(ex)*0.8), ]
   ex <- ex[log2(apply(ex, 1, mad)) > 8, ]
   bas <- bas[rownames(ex),]
   data_full <- ex
   colnames(bas) <- gsub(" |-", "_", colnames(bas))
   rownames(props) <- gsub(" |-", "_", rownames(props))
-  saveRDS(GSE19830.em, paste0("data_used/GSE11058_benchmark/",rep_n,"_run_em.rds"))
-  saveRDS(bas, paste0("data_used/GSE11058_benchmark/",rep_n,"_run_bas.rds"))
-  saveRDS(props, paste0("data_used/GSE11058_benchmark/",rep_n,"_run_props.rds"))
-  saveRDS(data_full, paste0("data_used/GSE11058_benchmark/",rep_n,"_run_data_full.rds"))
+  saveRDS(GSE11058.em, paste0(dir_to_save, rep_n,"_run_em.rds"))
+  saveRDS(bas, paste0(dir_to_save, rep_n,"_run_bas.rds"))
+  saveRDS(props, paste0(dir_to_save, rep_n, "_run_props.rds"))
+  saveRDS(data_full, paste0(dir_to_save, rep_n, "_run_data_full.rds"))
 }
 ```
 

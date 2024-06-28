@@ -4,14 +4,20 @@ output: html_notebook
 ---
 # Repeat of partial figure Brain
 
-
+Note: maximum R version supported by CellMix is 3.6. 
+(docker for this https://hub.docker.com/r/aladyevae/cellmix)
+Original package is not available for later version of R
+But we found a fork of this repo that is working
 ## Imports
 
 
 
 ```{r}
 # path to results and to save everything
-dir_to_save_fig <-  "../out/signature_based_7a/"
+dir_to_save_fig <-  "../out/signature_based_S6b/"
+objects_save_dir <- "../out/signature_based_S6b/dso_objects"
+data_dir <- "../data/large/signature_based/brain_data/"
+
 dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
 
 
@@ -31,9 +37,14 @@ library(preprocessCore) # needed for CellMix/DSA
 library(parallel) # needed for CellMix/DSA
 library(e1071) # needed for CellMix/DSA
 library(reshape2)
+library(ggplot2)
 library(ggrastr)
 library(svglite)
-source("additional_sources_used/CIBERSORT.R") # to compare with
+source("../R/CIBERSORT.R") # to compare with
+library(digest)
+library(matrixStats)
+library(Metrics)
+library(dplyr)
 ```
 
 
@@ -41,8 +52,8 @@ source("additional_sources_used/CIBERSORT.R") # to compare with
 ```{r}
 
 mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
-ex <- readRDS("data_used/brain_data/brain_merge2_grad.rds")
-props <- t(readRDS("data_used/brain_data/brain_merge2_grad_true_props.rds"))
+ex <- readRDS(paste0(data_dir, "brain_merge2_grad.rds"))
+props <- t(readRDS(paste0(data_dir, "brain_merge2_grad_true_props.rds")))
 rownames(props)[rownames(props) == "OPC"] <- "OPCs"
 
 ```
@@ -52,7 +63,7 @@ rownames(props)[rownames(props) == "OPC"] <- "OPCs"
 ## VL, NG, CA, ## possibly (LK, TS, F5, IP, DM, MM) but check column names carefully 
 DS_NAME <- "VL"
 n_markers <- 20
-load("data_used/brain_data/sigsBrain.rda")
+load(paste0(data_dir, "sigsBrain.rda"))
 bas <- sigsBrain[[DS_NAME]]
 ```
 
@@ -172,7 +183,7 @@ proj_full <- svd_project(data_full_scaled, 1:ntypes)
 Sometimes UMAP tend to place markers separetely, play siwh set.seed() with different numbers to get better picture
 ```{r}
 # This option makes all dots as a single layer reducing result image size
-options("linseed-rasterize"=T)
+options("dualsimplex-rasterize"=T)
 ```
 
 
@@ -201,9 +212,7 @@ genes_umap <- um$embedding
 
 
 ```
-```{r}
-systemfonts::font_info()
-```
+
 
 ```{r}
 ct_labels <- rep(NA, length(rownames(genes_umap)))
@@ -225,7 +234,7 @@ res_plot <-  ggplot(to_plot[is.na(ct_labels),], aes_string(x="V2", y="V1", col="
           axis.text = element_blank()) +  ggtitle("Genes PCA 1-7 UMAP, markers highlighted")
 
 filename <- paste0(dir_to_save_fig,"7_2_1_partial_umap.svg")
-ggsave(file=filename, plot=res_plot, width=10, height=7, device=svglite)
+ggsave(file=filename, plot=res_plot, width=8, height=6, device=svglite)
 
 res_plot
 ```
@@ -234,12 +243,11 @@ res_plot
 ## Create linseed2 object
 
 ```{r}
-save_dir <- "./7_partial_figure_save/brain"
-lo2 <- Linseed2Solver$new()
-lo2$set_save_dir(save_dir)
-lo2$set_data(data_full)
-lo2$project(ntypes)
-lo2$plot_svd_history()
+dso <- DualSimplexSolver$new()
+dso$set_save_dir(objects_save_dir)
+dso$set_data(data_full)
+dso$project(ntypes)
+dso$plot_svd_history()
 
 
 ```
@@ -247,11 +255,11 @@ lo2$plot_svd_history()
 
 ```{r fig.width=10, fig.height=7}
 set.seed(13)
-lo2$run_umap(neighbors_X = 15, neighbors_Omega = 20)
-lo2$st$marker_genes <- marker_list
-colors <-  which_marker(rownames(fData(lo2$st$data)), lo2$st$marker_genes)
+dso$run_umap(neighbors_X = 15, neighbors_Omega = 20)
+dso$st$marker_genes <- marker_list
+colors <-  which_marker(rownames(fData(dso$st$data)), dso$st$marker_genes)
 
-plot_projection_points(lo2$st$proj,  spaces = c("X"), pt_size = 2, color=colors) +
+plot_projection_points(dso$st$proj,  spaces = c("X"), pt_size = 2, color=colors) +
   scale_color_manual(values = colors_v, na.value = adjustcolor("grey70", alpha.f = 0.7)) + 
   labs(col = "Marker Cell Type", x = "UMAP1", y = "UMAP2") +
   theme_bw(base_family = "sans", base_size = 18) +
@@ -262,7 +270,7 @@ plot_projection_points(lo2$st$proj,  spaces = c("X"), pt_size = 2, color=colors)
 ## Single cell enrichment of markers
 
 ```{r}
-load("data_used/brain_data/SeuratObjects.rda")
+load(paste0(data_dir, "SeuratObjects.rda"))
 so <- obj$VL
 rm(obj)
 so <- ScaleData(so)
@@ -286,7 +294,7 @@ res_plot <- rasterise(DimPlot(so, group.by = "orig.celltype"), dpi=300) +
   scale_colour_manual(values = alpha(colors_m, 1), na.value = alpha("grey70", 1))
 
 filename <- paste0(dir_to_save_fig, "7_3_2_annotation_sc.svg")
-ggsave(file=filename, plot=res_plot, width=3, height=3, device=svglite)
+ggsave(file=filename, plot=res_plot, width=2.5, height=2.5, device=svglite)
 res_plot
 ```
 
@@ -295,7 +303,7 @@ res_plot
 ```{r fig.height=5, fig.width=5}
 ml_sorted <- marker_list[sort(names(marker_list))]
 so <- add_list_markers(so, ml_sorted)
-list_of_plots <- plot_marker_enrichment(so, names(ml_sorted), ncol=7, limits = c(-0.2, 1), function(plt) {
+list_of_plots <- plot_marker_enrichment(so, names(ml_sorted), ncol=7, limits = c(-0.2, 1), function(plt,i) {
   rasterise(plt, dpi=300) + NoLegend() + ggtitle(NULL) + NoAxes()
 }, wrap = F)
 ```
@@ -307,7 +315,7 @@ list_of_plots <- lapply(names(list_of_plots), function(current_name){
   res_plot <-  list_of_plots[[current_name]]
   filename <- paste0(dir_to_save_fig, "7_3_2_", current_name,"_sc.svg")
 
-  ggsave(file=filename, plot=res_plot, width=3, height=3, device=svglite)
+  ggsave(file=filename, plot=res_plot, width=1.5, height=1.5, device=svglite)
   res_plot
 
   return (res_plot)
@@ -318,23 +326,23 @@ list_of_plots
 ## Perform single run of signature-based deconvolution
 
 ```{r}
-lo2 <- Linseed2Solver$new()
-lo2$set_save_dir(save_dir)
-lo2$set_data(data_reduced)
-lo2$project(ntypes)
-lo2$init_solution("marker_means", marker_list=marker_list)
-lo2$optim_solution(3, 
+dso <- DualSimplexSolver$new()
+dso$set_save_dir(objects_save_dir)
+dso$set_data(data_reduced)
+dso$project(ntypes)
+dso$init_solution("marker_means", marker_list=marker_list)
+dso$optim_solution(3, 
                    optim_config(coef_hinge_W = 0.0001,
                                 coef_der_X = 0, 
                                 coef_der_Omega = 0
                                 ))
 
 ## Extract solution for markers in original space
-solution <- lo2$finalize_solution()
+solution <- dso$finalize_solution()
 H_res <- solution$H
 W_mark <- solution$W
-X_mark <- - lo2$st$solution_proj$X  
-Omega_mark <- t(lo2$st$solution_proj$Omega)
+X_mark <- - dso$st$solution_proj$X  
+Omega_mark <- t(dso$st$solution_proj$Omega)
 
 ## Get W for the whole data based on proportions
 res <- nnls_C__(t(H_res), t(data_full))
@@ -346,7 +354,7 @@ colnames(W_full) <- paste0("Cell_type_", 1:ntypes)
 ## Make projected plot
 
 ```{r}
-lo2$plot_projected()
+dso$plot_projected()
 ```
 
 ## Compare result proportions
@@ -377,7 +385,7 @@ ptp_lines
  Util methods to save proportion comparison
 ```{r}
 save_pt <- function(
-  this_H, this_W, model_n, rep_n, dir = "brain_partial_data", other_H = props, other_W = bas
+  this_H, this_W, model_n, rep_n, dir = objects_save_dir, other_H = props, other_W = bas
 ) {
   other_H <- other_H[names(marker_list), ]
   other_W <- other_W[, names(marker_list)]
@@ -397,7 +405,7 @@ save_pt <- function(
   }
 }
 
-read_pt <- function(model_n, rep_n, sig = DS_NAME, dir = "gse11058_partial_data") {
+read_pt <- function(model_n, rep_n, sig = DS_NAME, dir = objects_save_dir) {
   ptp_name <- paste0(dir, "/", model_n , "/", rep_n, "_ptp_", sig, ".rds")
   ptp <- readRDS(ptp_name)
   ptb_name <- paste0(dir, "/", model_n, "/", rep_n, "_ptb_", sig, ".rds")
@@ -413,8 +421,8 @@ read_pt <- function(model_n, rep_n, sig = DS_NAME, dir = "gse11058_partial_data"
 for (rep_n in seq(1, 5)) {
   print(rep_n)
   # Read the data
-  ex <- readRDS("data_used/brain_data/brain_merge2_grad.rds")
-  props <- t(readRDS("data_used/brain_data/brain_merge2_grad_true_props.rds"))
+  ex <- readRDS(paste0(data_dir, "brain_merge2_grad.rds"))
+  props <- t(readRDS(paste0(data_dir, "brain_merge2_grad_true_props.rds")))
   rownames(props)[rownames(props) == "OPC"] <- "OPCs"
   ## VL, NG, CA, LK, TS, F5, IP, DM, MM
   DS_NAME <- "CA"
@@ -436,22 +444,22 @@ for (rep_n in seq(1, 5)) {
   ## Solve with Linseed2
   
   # Run linseed2
-  lo2 <- Linseed2Solver$new()
-  lo2$set_save_dir(save_dir)
-  lo2$set_data(data_reduced)
-  lo2$project(ntypes)
-  lo2$init_solution("marker_means", marker_list=marker_list)
-  lo2$optim_solution(3, 
+  dso <- DualSimplexSolver$new()
+  dso$set_save_dir(objects_save_dir)
+  dso$set_data(data_reduced)
+  dso$project(ntypes)
+  dso$init_solution("marker_means", marker_list=marker_list)
+  dso$optim_solution(3, 
                      optim_config(coef_hinge_W = 0.0001,
                                   coef_der_X = 0, 
                                   coef_der_Omega = 0
                                   ))
   ## Extract solution for markers in original space
-  solution <- lo2$finalize_solution()
+  solution <- dso$finalize_solution()
   H_res <- solution$H
   W_mark <- solution$W
-  X_mark <- - lo2$st$solution_proj$X  
-  Omega_mark <- t(lo2$st$solution_proj$Omega)
+  X_mark <- - dso$st$solution_proj$X  
+  Omega_mark <- t(dso$st$solution_proj$Omega)
   
   ## Get W for the whole data based on proportions
   res <- nnls_C__(t(H_res), t(data_full))
@@ -459,7 +467,7 @@ for (rep_n in seq(1, 5)) {
   colnames(W_full) <- paste0("Cell_type_", 1:ntypes)
   
   ## Save result
-  save_pt(H_res, W_full, "linseed2", rep_n, dir=save_dir)
+  save_pt(H_res, W_full, "dualsimplex", rep_n, dir=objects_save_dir)
   print("CIBERSORT")
   # Run CIBERSORT
   cib <- CIBERSORT(
@@ -471,7 +479,7 @@ for (rep_n in seq(1, 5)) {
     )
   H_res <- t(cib)
   H_res <- H_res[names(marker_list), ]
-  save_pt(H_res, NULL, "cib", rep_n,  dir=save_dir)
+  save_pt(H_res, NULL, "cib", rep_n,  dir=objects_save_dir)
   
   
   print("DSA")
@@ -482,7 +490,7 @@ for (rep_n in seq(1, 5)) {
                       verbose = F) 
   H_res <- coef(dsa)
   W_full <- basis(dsa)
-  save_pt(H_res, W_full, "dsa", rep_n,  dir=save_dir)
+  save_pt(H_res, W_full, "dsa", rep_n,  dir=objects_save_dir)
 
   }
 ```
@@ -494,15 +502,17 @@ library(svglite)
 #save_dir <- "./7_partial_figure_save/brain"
 filename <- paste0(dir_to_save_fig, "7_3_3_barplot.svg")
 
-models <- c("linseed2", "dsa"
+models <- c("dualsimplex", "dsa"
             , "cib"
             )
-signatures <- list("VL", "NG", "CA")
+signatures <- list(
+  #"VL", "NG",
+  "CA")
 total_rmses <- data.frame()
 for (rep_n in seq(1, 5)) {
   this_dfs <- lapply(models, function(model) {
     results <- lapply(signatures, function(sig) {
-      read_pt(model, rep_n, sig,dir=save_dir)$ptp
+      read_pt(model, rep_n, sig,dir=objects_save_dir)$ptp
     })
     rmses <- sapply(results, function(res) {
       
@@ -515,7 +525,7 @@ for (rep_n in seq(1, 5)) {
       rmses$model <- "CIBERSORT"
     } else if (model == "dsa") {
       rmses$model <- "DSA"
-    } else if (model == "linseed2") {
+    } else if (model == "dualsimplex") {
       rmses$model <- "DualSimplex"
     }
     rmses$rep <- rep_n
