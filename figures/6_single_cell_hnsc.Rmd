@@ -8,16 +8,12 @@ output:
 
 # Setup
 ```{r setup}
-# source("../R/setup.R")
+source("../R/setup.R")
 library(ggplot2)
 library(Seurat)
 library(systemfonts)
 library(magrittr)
-library(DualSimplex)
-options("dualsimplex-rasterize" = T)
 
-# For reproducibility   
-# knitr::opts_knit$set(root.dir = "/scratch1/fs1/martyomov/chia-jung.l/project/dual-simplex-integration/dualsimplex_paper")
 ```
 
 
