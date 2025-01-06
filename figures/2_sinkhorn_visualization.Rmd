@@ -13,8 +13,8 @@ library(RColorBrewer)
 ```{r}
 set.seed(4)
 
-N <- 1900
-M <- 2000
+N <- 500
+M <- 400
 K <- 3
 ```
 
@@ -35,17 +35,18 @@ V_no_noise <- V
 ## Colored
 ```{r fig.height = 5, fig.width = 10}
 dso <-  DualSimplexSolver$new()
-dso$set_data(V, sinkhorn_iterations = 20)
-dso$project(3)
+dso$set_data(V, max_sinkhorn_iterations = 20)
+dso$project(K)
 dso$plot_projected("plane_distance", "plane_distance", with_solution=TRUE, use_dims = list(2:3))
 ```
 
+
 ## 3D 
-````{r fig.height = 15, fig.width = 15}
+````{r fig.height = 20, fig.width = 20}
 points_col <- brewer.pal(9, "Blues")
-plot_3d(round(dso$st$proj$X, 15), "V", size = 6, colors = points_col)
+plot_3d(round(dso$st$proj$X, 5), "R", size = 3, colors = points_col, shift=0)
 points_col <- brewer.pal(9, "Oranges")
-plot_3d(round(dso$st$proj$Omega, 15), "V", size = 6,  colors = points_col)
+plot_3d(round(dso$st$proj$Omega, 5), "S", size = 3,  colors = points_col, shift=0)
 ```
 
 
@@ -132,8 +133,8 @@ plot
 
 ### 3D svd with next component (centered data)
 ```{r}
-S <- t(svd_$u[, 1:3])
-R <- t(svd_$v[, 1:3])
+S <- t(svd_$u[, 1:K])
+R <- t(svd_$v[, 1:K])
 
 V_r <-  t(R %*% t(centered_data))
 V_s <-  t(S %*% centered_data)

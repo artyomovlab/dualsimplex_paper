@@ -29,6 +29,10 @@ if (!require("linseed", quietly = TRUE))
   install.packages("linseed")
 if (!require("linseed", quietly = TRUE))
   devtools::install_github("ctlab/linseed")
+if (!require("biomaRt", quietly = TRUE))
+  BiocManager::install("biomaRt")
+if (!require("msigdbr", quietly = TRUE))
+  install.packages("msigdbr")
 
 library('GEOquery')
 library(biomaRt)
@@ -42,6 +46,7 @@ library(ggpubr)
 library(linseed)
 library(matrixStats)
 library(ComplexHeatmap)
+library(svglite)
 ```
 
 
@@ -61,7 +66,7 @@ data_raw <- linearize_dataset(data_raw)
 probe id will be converted and collapsed to gene names
 ```{r}
 # probes which are present in data
-probe_mapping <- biomaRt::select(rat2302.db::rat2302.db, rownames(data_raw), c("SYMBOL"))
+probe_mapping <- biomaRt::select(rat2302.db::rat2302.db, rownames(data_raw), c("SYMBOL", "GENETYPE"))
 probe_mapping <-
   probe_mapping[probe_mapping$PROBEID %in% rownames(data_raw),]
 # not empty result gene id (now we  many-to-many in in genes to probes)
@@ -125,18 +130,33 @@ print(paste("Dim for hidden basis (W):", toString(dim(true_basis))))
 
 
 # Dual simplex method
+
+## Add additional annotation for genes
+
+```{r}
+coding_gene_info = probe_mapping[probe_mapping$GENETYPE == "protein-coding",]
+
+gene_anno <- list(
+  CODING = coding_gene_info$SYMBOL
+)
+```
+
+
 ## Create DualSimplexSolver object and prefilter
 
 keep coding genes only
 
 ```{r}
 dso <- DualSimplexSolver$new()
-dso$set_data(data_raw)
-dso$basic_filter(remove_true_cols_default = c())
+dso$set_data(data_raw, gene_anno_lists = gene_anno, max_dim = 20)
+dso$basic_filter(remove_true_cols_default = c(), keep_true_cols= c("CODING"))
 dso$project(n_ct)
 
 print(paste("Dim for the prefiltered data data:", toString(dim(dso$get_data()))))
 ```
+
+
+
 
 ```{r fig.height = 5, fig.width = 11}
 dso$plot_svd(dims=1:15)
@@ -310,6 +330,9 @@ plot_errors(dso$st$solution_proj, variables = c(
 # This option makes all dots as a single layer reducing result image size
 options("dualsimplex-rasterize"=T)
 ```
+```{r}
+dso$plot_negative_proportions_change()
+```
 
 ### History of solution
 ```{r fig.width=5, fig.height=5}
@@ -339,7 +362,7 @@ ggsave(
   plot = pltX,
   width = 3,
   height = 3,
-  device = svg
+  device = svglite
 )
 pltOmega <-
   proj_solution_history[[2]] + scale_fill_manual(values = colors_v[3:5])
@@ -350,7 +373,7 @@ ggsave(
   plot = pltOmega,
   width = 3,
   height = 3,
-  device = svg
+  device = svglite
 )
 ggarrange(pltX, pltOmega)
 ```
@@ -456,7 +479,7 @@ ggsave(
   plot_markers,
   width = 4.5,
   height = 3,
-  device = svg
+  device = svglite
 )
 
 colors <- which_marker(rownames(fData(dso$st$data)), dso$st$marker_genes)
@@ -484,7 +507,7 @@ ggsave(
   plot_markers,
   width = 3,
   height = 3,
-  device = svg
+  device = svglite
 )
 
 plot_markers

@@ -25,9 +25,14 @@ if (!require("irlba", quietly = TRUE))
 if (!require("reshape", quietly = TRUE))
   install.packages("reshape")
 if (!require("linseed", quietly = TRUE))
-  install.packages("linseed")
-if (!require("linseed", quietly = TRUE))
   devtools::install_github("ctlab/linseed")
+if (!require("biomaRt", quietly = TRUE))
+  BiocManager::install("biomaRt")
+if (!require("ggrastr", quietly = TRUE))
+  install.packages("ggrastr")
+if (!require("svglite", quietly = TRUE))
+  install.packages("svglite")
+
 
 library('GEOquery')
 library(biomaRt)
@@ -39,6 +44,8 @@ library(plotly)
 library(ggrastr)
 library(ggpubr)
 library(linseed)
+library(svglite)
+library(DualSimplex)
 ```
 
 
@@ -243,7 +250,7 @@ cowplot::plot_grid(
 
 Remove genes which are to far from projection hyperplane and zero point
 ```{r}
-dso$distance_filter(plane_d_lt = 0.19, zero_d_lt = 0.3, genes = T)
+dso$distance_filter(plane_d_lt = 0.2, zero_d_lt = 0.3, genes = T)
 dso$project(n_ct)
 ```
 
@@ -390,8 +397,9 @@ ggsave(
   plot = errors_plot,
   width = 5,
   height = 3,
-  device = svg
+  device = svglite
 )
+errors_plot
 ```
 
 
@@ -431,7 +439,7 @@ ggsave(
   plot = pltX,
   width = 3,
   height = 3,
-  device = svg
+  device = svglite
 )
 pltOmega <- umap_solution_history[[2]] +
   scale_fill_manual(values = colors_v[3:6]) +
@@ -444,7 +452,7 @@ ggsave(
   plot = pltOmega,
   width = 3,
   height = 3,
-  device = svg
+  device = svglite
 )
 ggarrange(pltX, pltOmega)
 ```

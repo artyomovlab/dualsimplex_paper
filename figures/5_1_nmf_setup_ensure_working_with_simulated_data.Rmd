@@ -101,7 +101,7 @@ res_methods[["DualSimplex"]] <- res
 
 
 ## Check results
-### Triangles found by linseed
+### Triangles found by DualSimplex method
 ```{r}
 check_triangles(res_methods)
 ```

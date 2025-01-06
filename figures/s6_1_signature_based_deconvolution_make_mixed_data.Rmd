@@ -49,7 +49,7 @@ n_markers <- 20
 ```
 
 ```{r}
-GSE19830.em <- ExpressionMix("GSE11058", verbose=TRUE)
+GSE11058.em <- ExpressionMix("GSE11058", verbose=TRUE)
 ```
 
 ```{r}
@@ -73,7 +73,7 @@ colnames(bas) <- gsub(" |-", "_", colnames(bas))
 saveRDS(GSE11058.em, paste0(dir_to_save, "single_run_em.rds"))
 saveRDS(bas, paste0(dir_to_save, "single_run_bas.rds"))
 saveRDS(props, paste0(dir_to_save, "single_run_props.rds"))
-saveRDS(data_full, paste0(dir_to_save, "/single_run_data_full.rds"))
+saveRDS(data_full, paste0(dir_to_save, "single_run_data_full.rds"))
 
 ```
 

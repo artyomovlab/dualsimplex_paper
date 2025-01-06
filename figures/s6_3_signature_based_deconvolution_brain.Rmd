@@ -4,10 +4,7 @@ output: html_notebook
 ---
 # Repeat of partial figure Brain
 
-Note: maximum R version supported by CellMix is 3.6. 
-(docker for this https://hub.docker.com/r/aladyevae/cellmix)
-Original package is not available for later version of R
-But we found a fork of this repo that is working
+
 ## Imports
 
 
