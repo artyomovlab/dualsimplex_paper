@@ -53,6 +53,18 @@ dso$plot_projected(
 )
 ```
 
+```{r}
+t <-  dso$get_sinkhorned_data(row_norm=FALSE)
+```
+
+
+
+```{r}
+V_row <- dso$st$scaling$V_row
+V_col <- dso$st$scaling$V_column
+```
+
+
 
 ## Make specific init, which was in a paper
 ```{r}
@@ -103,6 +115,13 @@ dso$plot_error_history()
 
 
 ## This is how extract metadata (terms for equations)
+```{r}
+  solution_scaled <- reverse_solution_projection(dso$st$solution_proj, dso$st$proj)
+
+```
+
+
+
 ```{r}
 solution_proj <- dso$st$solution_proj
 proj <-  dso$st$proj

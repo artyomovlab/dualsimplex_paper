@@ -1,0 +1,409 @@
+---
+title: "Blood analysis"
+author: "Valeria"
+date: "2024-06-04"
+output:
+  html_document:
+    df_print: paged
+    self_contained: yes
+---
+```{r}
+getwd()
+```
+
+
+```{r}
+source("../R/setup.R")
+library(ggplot2)
+library(Seurat)
+library(systemfonts)
+options("dualsimplex-rasterize" = T)
+```
+
+
+```{r}
+source("../R/figure_utils.R")
+#source("R/setup.R")
+```
+
+
+Some parameters for later
+```{r}
+pt_size <- 0.2
+n_ct_preproc <- 20
+save_dir <- "../out/dualsimplex_save_blood"
+```
+
+```{r}
+data <- read.delim(file="../data/gtex_blood/gene_reads_whole_blood.gct", skip=2)
+```
+
+```{r}
+data_raw <-  as.matrix(data[, -c(1, 2, 3)])
+rownames(data_raw) <- data$Name
+```
+
+```{r}
+library(biomaRt)
+library(org.Hs.eg.db)
+gene_ids <- sub(pattern = "\\.[0-9]+$", replacement = "", x = rownames(data_raw))
+rownames(data_raw) <- gene_ids
+probe_mapping <- mapIds(org.Hs.eg.db,
+                  keys = gene_ids,
+                  keytype = "ENSEMBL",
+                  column = "SYMBOL",
+                  multiVals = "asNA")
+
+
+# probes which are present in data
+probe_mapping <-
+  probe_mapping[ gene_ids]
+
+# not empty result gene id (now we  many-to-many in in genes to probes)
+probe_mapping <- probe_mapping[!is.na(probe_mapping)]
+# ## want to collapse gene for each gene and take mean value of data
+data_raw <- data_raw[names(probe_mapping), ]
+rownames(data_raw) <- probe_mapping
+# # should be unique gene name as row name after this
+data_raw <- remove_zero_rows(data_raw)
+data_raw <-
+  tapply(data_raw, list(row.names(data_raw)[row(data_raw)], colnames(data_raw)[col(data_raw)]), FUN = median)
+```
+```{r}
+dim(data_raw)
+```
+```{r}
+save(data_raw, file="../data/gtex_blood/gtex_blood_gene_names_collapsed.Rda")
+```
+
+```{r}
+write.table(data_raw, file="../data/gtex_blood/gtex_blood_gene_names_collapsed.table")
+```
+
+```{r}
+saveRDS(data_raw, file="../data/gtex_blood/gtex_blood_gene_names_collapsed_rds.Rda")
+```
+
+```{r}
+library(dplyr)
+data_raw <-  data_raw %>%
+   group_by(GENE_SYMBOL) %>% 
+   summarise_all(mean)
+```
+
+
+```{r}
+data_raw <-
+  tapply(matrix_data, list(row.names(matrix_data)[row(matrix_data)], colnames(matrix_data)[col(matrix_data)]), FUN = median)
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+data_raw <- t(sapply(split(data, data$Description, drop = F), colMeans))
+```
+
+
+
+```{r}
+
+data_raw <- remove_zero_rows(data_raw)
+
+data_raw <- linearize_dataset(data_raw)
+data_raw <- replace_duplicate_genes(data_raw)
+
+# Print number of genes and samples in the initial dataset
+dim(data_raw)
+```
+
+```{r}
+dso <- DualSimplexSolver$new()
+dso$set_data(data_raw)
+#dso$plot_svd()
+```
+
+
+
+```{r}
+dso$plot_mad()
+```
+```{r}
+# Takes: ~35s for 25k genes
+dso$basic_filter(
+  log_mad_gt = 4,  # Note that this is log_mad. It is equivalent to mad < ~1.1
+  remove_true_cols_default = FALSE,  # This function filters some gene categories by default, but for this demo we turn it off
+  genes = T
+)
+dso$plot_svd()
+dso$plot_mad()
+```
+
+
+
+Выбросы
+```{r fig.width = 14, fig.height = 6}
+# This will be applied to the future projection plots,
+#  unless overridden explicitly with the use_dims parameter
+n_ct_outliers <- 20
+dso$project(n_ct_outliers)
+all_dims <- list(2:3, 4:5, 6:7, 8:9)
+dso$set_display_dims(all_dims)
+dso$plot_projected()
+```
+
+```{r}
+dso$project(n_ct_outliers)
+dso$plot_projection_diagnostics()
+```
+```{r}
+dso$distance_filter(zero_d_lt = 0.2, plane_d_lt = 0.15, genes = T)
+```
+
+```{r}
+n_ct_outliers = 15
+dso$project(n_ct_outliers)
+dso$plot_projection_diagnostics()
+```
+
+
+
+
+```{r}
+dso$distance_filter(zero_d_lt = 0.015, plane_d_lt = 0.012, genes = F)
+n_ct_outliers = 15
+dso$project(n_ct_outliers)
+dso$plot_projection_diagnostics()
+```
+
+
+
+```{r}
+dso$distance_filter(zero_d_lt = 0.007, plane_d_lt = 0.07, genes = T)
+
+n_ct_outliers = 15
+dso$project(n_ct_outliers)
+dso$plot_projection_diagnostics()
+```
+
+
+
+
+
+
+```{r}
+library(caret)
+
+# Assuming your gene expression matrix is stored in a variable called gene_expression_matrix
+
+# Step 1: Reduce the matrix to the 10000 most expressed genes
+data_top <- data_raw[order(rowSums(data_raw), decreasing = TRUE)[1:15000], ]
+
+
+
+
+```
+
+
+```{r}
+
+dso_t <- DualSimplexSolver$new()
+dso_t$set_data(data_top)
+dso_t$plot_svd()
+```
+
+```{r}
+dso_t$plot_mad()
+dso_t$basic_filter(
+  log_mad_gt = 0.1,  # Note that this is log_mad. It is equivalent to mad < ~1.1
+  remove_true_cols_default = FALSE,  # This function filters some gene categories by default, but for this demo we turn it off
+  genes = T
+)
+dso_t$plot_mad()
+```
+
+
+```{r fig.width = 14, fig.height = 6}
+# This will be applied to the future projection plots,
+#  unless overridden explicitly with the use_dims parameter
+n_ct_outliers <- 19
+dso_t$project(n_ct_outliers)
+all_dims <- list(2:3, 4:5, 6:7, 8:9, 10:11, 12:13, 14:15, 16:17, 18:19)
+dso_t$set_display_dims(all_dims)
+dso_t$plot_projected()
+```
+
+```{r}
+dso_t$project(n_ct_outliers)
+dso_t$plot_projection_diagnostics()
+```
+
+
+```{r fig.width = 14, fig.height = 6}
+dso_t$distance_filter(zero_d_lt = 0.4, genes = T)
+dso_t$project(n_ct_outliers)
+dso_t$plot_projection_diagnostics()
+```
+
+```{r fig.width = 14, fig.height = 6}
+dso_t$distance_filter(zero_d_lt = 0.2, plane_d_lt = 0.35, genes = T)
+dso_t$project(n_ct_outliers)
+dso_t$plot_projection_diagnostics()
+```
+
+```{r fig.width = 14, fig.height = 6}
+dso_t$distance_filter(plane_d_lt = 0.045, genes = F)
+dso_t$project(n_ct_outliers)
+dso_t$plot_projection_diagnostics()
+```
+
+
+```{r fig.width = 14, fig.height = 6}
+dso_t$distance_filter(plane_d_lt = 0.15, genes = T)
+dso_t$project(n_ct_outliers)
+dso_t$plot_projection_diagnostics()
+```
+
+
+```{r}
+# Checkpoint
+
+dso_t$save_state()
+# dso_t <- DualSimplexSolver$from_state(save_dir, save_there = T)
+```
+
+## Filtering results
+```{r}
+dso_t$get_filtering_stats()
+```
+
+```{r}
+dso_t$plot_svd_history(c(1, 2, 3, 8))
+```
+
+## Final projection UMAP
+```{r fig.width = 11, fig.height = 5}
+# Choose neighbors parameters to generate the umap with different detail level
+set.seed(4)
+dso$run_umap(neighbors_X = 10, neighbors_Omega = 10)
+dso$plot_projected(use_dims = NULL, pt_size = 0.5)
+```
+
+```{r}
+# Checkpoint
+
+dso_t$save_state(save_dir)
+dso_t <- DualSimplexSolver$from_state(save_dir, save_there = T)
+```
+
+#Deconvolution 
+
+```{r}
+
+options(`dualsimplex-rasterize` = TRUE)
+
+```
+
+```{r fig.width = 14, fig.height = 6}
+dso_t$plot_projected(use_dims = NULL)
+```
+
+```{r}
+all_dims <- list(NULL, 2:3, 4:5, 6:7, 8:9, 10:11, 12:13, 14:15)
+dso_t$set_display_dims(all_dims)
+```
+
+
+## Initialize solution
+```{r fig.width = 14, fig.height = 6}
+set.seed(13)
+dso_t$init_solution("select_x")
+dso_t$plot_projected(use_dims = NULL, with_legend = T)
+```
+
+
+
+
+## Optimize solution
+```{r fig.width = 14, fig.height = 6}
+# For select_x to correct Omega
+dso_t$optim_solution(650, optim_config(coef_hinge_H = 1, coef_hinge_W = 1, coef_der_X = 0.001, coef_der_Omega = 0.1))
+dso_t$plot_projected(use_dims = NULL, with_legend = T, from_iter = 1, to_iter = 650)
+```
+
+
+Run this cell several times until convergence.
+Choosing coef_hinge parameters is the trickiest part.
+```{r}
+lr <- 0.001
+dso_t$optim_solution(1000, optim_config(coef_hinge_H = .01, coef_hinge_W = .01, coef_der_X = lr, coef_der_Omega = lr))
+dso_t$plot_error_history()
+```
+
+```{r fig.width = 8, fig.height = 4.3}
+plt <- dso_t$plot_projected(use_dims = NULL, with_legend = F, with_history = T, pt_size = 0.6)
+ggsave("../out/blood_save", width = 8, height = 4.3, plot = plt, device = svglite::svglite)
+plt
+```
+
+
+### Get final solution in original space
+
+Simple negativity check
+
+
+```{r}
+solution_scaled <- reverse_solution_projection(dso_t$st$solution_proj, dso_t$st$proj)
+sum(solution_scaled$W_col < 0) / length(solution_scaled$W_col)
+sum(solution_scaled$H_row < 0) / length(solution_scaled$H_row)
+snc <- reverse_solution_sinkhorn(solution_scaled, dso_t$st$scaling)
+res <- reverse_sinkhorn_c(solution_scaled$H_row,
+                          solution_scaled$W_col,
+                          dso_t$st$scaling$D_vs_row,
+                          dso_t$st$scaling$D_vs_col,
+                          dso_t$st$scaling$iterations)
+
+dso_t$plot_negative_proportions_change()
+dso_t$plot_negative_basis_change()
+#plot_matrix_hist_with_negative(solution_scaled$H_row, title = "Proportions distribution", bins = 100)
+#plot_matrix_hist_with_negative(solution_scaled$W_col, title = "Basis distribution", bins = 100)
+
+R <- dso_t$st$proj$meta$R
+S <- dso_t$st$proj$meta$S
+V_ss <- dso_t$st$scaling$V_row
+
+m <- t(S) %*% S %*% V_ss %*% t(R) %*% R
+sum(m < 0) / (nrow(m) * ncol(m))
+
+#plot_matrix_hist_with_negative(m, bins = 100)
+
+all(is.na(res$W))
+```
+
+```{r}
+solution <- dso_t$finalize_solution()
+```
+
+```{r fig.width = 14, fig.height = 6}
+plt <- dso_t$plot_projected("markers", use_dims = NULL, with_legend = T, pt_size = 0.9, with_history = F)
+ggsave("../out/6e.svg", width = 14, height = 6, plot = plt, device = svg)
+plt
+```
+
+
+```{r, fig.width=9, fig.height=5}
+plt <- ggplot(reshape2::melt(pmin(t(dso_t$get_solution()$H), 1)), aes(x = Var2, y = value, fill = Var2)) +
+  geom_boxplot() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.8, hjust=0.5), axis.title.x = element_blank())
+ggsave("../out/6d_proportions.svg", plt, width = 9, height = 5, device = svg)
+plt
+```
+
+```{r}
+dso_t$save_state()
+```
+

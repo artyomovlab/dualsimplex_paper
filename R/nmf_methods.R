@@ -49,10 +49,13 @@ sampleFromSimplexUniformly <- function(n, k=3, M=100000, fixed_proportion=NULL) 
 }
 
 ## Generate all matrices using provides pictures_W matrix. H sampled from simplex.
-make_simulated_data<- function(M, N, K, noise_deviation = 0.1, noise_nature="proportional" ) {
+make_simulated_data<- function(M, N, K, noise_deviation = 0.1, add_pure=F, noise_nature="proportional" ) {
   
   H <-  matrix(runif(K*N, min = 0, max = 10),nrow=K )  
   W <-  t(matrix(runif(K*M, min = 0, max = 10),nrow=K ) )
+  if (add_pure) {
+    H[1:K,1:K] <- diag(rep(1, K))
+  }
   
   V <- W %*% H
   
@@ -63,7 +66,7 @@ make_simulated_data<- function(M, N, K, noise_deviation = 0.1, noise_nature="pro
   colnames(true_H) <- colnames(V)
   rownames(true_W) <- rownames(V)
   if (noise_nature == "proportional") {
-    noise_mask <- 1+ matrix(rnorm(length(V), sd = noise_deviation), nrow = nrow(V), ncol = ncol(V))
+    noise_mask <- 1 + matrix(rnorm(length(V), sd = noise_deviation), nrow = nrow(V), ncol = ncol(V))
     noizy_V <-  V * noise_mask
   } else if (noise_nature == "additive") {
     noise_mask <-  matrix(rnorm(length(V), sd = noise_deviation), nrow = nrow(V), ncol = ncol(V))

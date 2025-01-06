@@ -12,6 +12,7 @@ source("../R/setup.R")
 ```
 
 
+
 Some parameters for later
 ```{r}
 pt_size <- 0.2
@@ -25,12 +26,15 @@ save_dir <- "../out/dualsimplex_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
 ## Data
 ```{r}
 data_raw <- as.matrix(readRDS("../data/large/HNSC.Rda"))
-data_raw <- remove_zero_rows(data_raw)
-data_raw <- linearize_dataset(data_raw)
-data_raw <- replace_duplicate_genes(data_raw)
+# data_raw <- remove_zero_rows(data_raw)
+# data_raw <- linearize_dataset(data_raw)
+# data_raw <- replace_duplicate_genes(data_raw)
 
 # Print number of genes and samples in the initial dataset
 dim(data_raw)
+```
+```{r}
+t <-  remove_zero_cols(data_raw)
 ```
 
 ## Anotation
@@ -88,6 +92,14 @@ gene_anno <- list(
 sample_anno <- list(ST_TUMOR = colnames(data_raw)[sample_types == "Primary Tumor"])
 ```
 
+## Collapse similar gene names
+```{r}
+data_raw <- data_raw[unique(rownames(data_raw)),]
+data_raw <- remove_zero_rows(data_raw)
+data_raw <- remove_zero_cols(data_raw)
+
+```
+
 # DualSimplex-based preprocesing
 ```{r}
 # Create a new Linseed 2 object. Downstream analysis will happen inside it.
@@ -98,7 +110,7 @@ lo2$set_save_dir(save_dir)
 ```{r}
 # To calculate this step faster, reduce the initial dataset size to 10-20k genes
 # Takes: ~1 min for 55k genes
-lo2$set_data(data_raw, gene_anno, sample_anno)
+lo2$set_data(data_raw, gene_anno, sample_anno, sinkhorn_iterations = 50)
 
 # Saving memory
 rm(data_raw)
@@ -116,6 +128,10 @@ head(fData(lo2$get_data()))
 # Sample annotations
 head(pData(lo2$get_data()))
 ```
+```{r}
+lo2$add_knn_distances_anno(annotation_names_list = c("MT"))
+```
+
 
 
 ## MAD filtering
@@ -144,6 +160,14 @@ so theoretically, any MAD threshold lower than the right mode on the plot,
 is suitable for MAD filtering. However, we found it practical
 to set a low threshold at this stage, and see when the SVD plot gets better.
 For this dataset, log_mad > 0.1 yields an SVD plot with a decent elbow (see below).
+
+```{r}
+cur_data <-  lo2$get_data()
+new_data <- threshold_filter(cur_data, "log_mad", 0.1, genes = T, keep_lower = F)
+```
+
+
+
 ```{r}
 # Takes: ~35s for 25k genes
 lo2$basic_filter(

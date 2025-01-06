@@ -67,14 +67,15 @@ plt <- plot_marker_enrichment(
   limits = NULL,
   ncol = 2,
   ggadd = function(x, y) { x + Seurat::NoAxes() + Seurat::NoLegend() },
-  raster = T
+  raster = T,
+  pt.size = 3
 )
-ggsave("../out/6f_malignant_subset.svg", plt, width = 10, height = 15, device = svg)
+ggsave("../out/6f_malignant_subset.svg", plt, width = 4, height = 6, device = svglite)
 plt
 ```
 
 ```{r fig.width=4.7, fig.height=4}
-plt <- Seurat::DimPlot(so_malignant, group.by = "hpv", raster = T) + Seurat::NoAxes() + ggtitle("")
+plt <- Seurat::DimPlot(so_malignant, group.by = "hpv", raster = T,   pt.size = 3) + Seurat::NoAxes() + ggtitle("")
 ggsave("../out/6f_malignant_subset_hpv.svg", plt, width = 4.7, height = 4, device = svg)
 plt
 ```

@@ -25,6 +25,12 @@ lo2$plot_projected(use_dims = NULL)
 ```
 
 ```{r}
+View(lo2$get_filtering_stats())
+```
+
+
+
+```{r}
 all_dims <- list(NULL, 2:3, 4:5, 6:7, 8:9)
 lo2$set_display_dims(all_dims)
 ```

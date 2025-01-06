@@ -16,11 +16,11 @@ source("../R/figure_utils.R") # for same colors
 # Analyze saved NMF results
 ```{r}
 current_K <- 4
-current_N <- 300
-current_M <- 200
+current_N <- 800
+current_M <- 1000
 
 
-noise_deviation <- 1
+noise_deviation <- 0
 noise_nature <- "proportional" #proportional additive
 proportions <-  "random_proportions" # simplex random_proportions
 ```
@@ -269,8 +269,8 @@ t <- list(
   family = "Helvetica",
   size = 30)
 
-fig_X <- plot_ly(toPlotX,  width = 500, height = 500, type='scatter3d', mode='markers') %>%
-  config(toImageButtonOptions = list(format = "svg",  width = 600, height = 600)) %>%
+fig_X <- plot_ly(toPlotX,  width = 300, height = 300, type='scatter3d', mode='markers') %>%
+  config(toImageButtonOptions = list(format = "svg",  width = 300, height = 300)) %>%
   add_trace( x = ~R2, y = ~R3, z = ~R4, size=1,
              marker = list(symbol = 'circle', color = "gray", opacity = 0.6,
                            line = list( color = 'black', opacity=0.4, width = 1 ))) %>%
@@ -290,8 +290,8 @@ fig_X <- fig_X %>% layout(showlegend = FALSE,
 
                      zaxis = list(title = 'R4', titlefont = t))
 
-                          ) %>% config(toImageButtonOptions = list(format = "svg", width = 600,
-                                                              height = 600))
+                          ) %>% config(toImageButtonOptions = list(format = "svg", width = 300,
+                                                              height = 300))
 
 fig_X
 ```

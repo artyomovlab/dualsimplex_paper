@@ -1,3 +1,5 @@
 # Install Linseed 2
+#devtools::load_all("../../dualsimplex")
 unloadNamespace("dualsimplex")
-devtools::load_all("../../dualsimplex")
+devtools::install_github("artyomovlab/DualSimplex@knn_gene_filtering")
+library("DualSimplex")
