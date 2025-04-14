@@ -6,7 +6,7 @@ output: html_document
 # Import package
 ```{r}
 source('../R/setup.R')
-library(reshape2)
+library(reshape2) 
 library(ggplot2)
 library(dplyr)
 library(ggrepel)
@@ -34,10 +34,19 @@ true_basis <- sim$basis
 true_proportions <- sim$proportions
 
 dso <- DualSimplexSolver$new()
-dso$set_data(data_raw)
-
-plane_distance_threshold = 0.05 # Change here several times to see result, start with big and lower it
+dso$set_data(data_raw, max_dim = 30, sinkhorn_tol = 1e-17)
 dso$project(3)
+dso$plot_projected(
+  "plane_distance",
+  "plane_distance",
+  #with_solution = TRUE,
+  use_dims = list(2:3)
+)
+```
+
+
+```{r}
+plane_distance_threshold = 0.05 # Change here several times to see result, start with big and lower it
 dso$distance_filter(plane_d_lt = plane_distance_threshold,
                     zero_d_lt = NULL,
                     genes = T)
@@ -52,6 +61,7 @@ dso$plot_projected(
   use_dims = list(2:3)
 )
 ```
+
 
 
 ## Make specific init, which was in a paper

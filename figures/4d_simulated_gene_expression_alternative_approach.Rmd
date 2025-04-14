@@ -87,7 +87,7 @@ for (i in 1:blocks) {
       coef_hinge_W = coef_hinge_W,
       coef_der_X = 0.1,
       coef_der_Omega = 0.1,
-      alternative_method = TRUE
+      method = "positivity"
     )
   )
   curr_X <- dso$st$solution_proj$X  # this is how we can extract solution on a fly

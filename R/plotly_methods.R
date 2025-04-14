@@ -1,6 +1,4 @@
-plot_3d <- function(projection_points, axes="V", size =5, colors=brewer.pal(9,"Greys")) {
-  #projection_points <-  round(projection_points,15)
-  
+plot_3d <- function(projection_points, axes="V", size =5, colors=brewer.pal(9,"Greys"), shift=0) {
   t <- list(
     family = "Helvetica",
     size = 30)
@@ -12,9 +10,9 @@ plot_3d <- function(projection_points, axes="V", size =5, colors=brewer.pal(9,"G
                       width = 500, height = 500,   
                        mode   = 'markers',  type   = 'scatter3d') 
   
-  fig_Omega <-fig_Omega %>% add_trace( x = to_plot_points[[names_for_col[[1]]]], 
-                                       y = to_plot_points[[names_for_col[[2]]]], 
-                                       z = to_plot_points[[names_for_col[[3]]]]
+  fig_Omega <-fig_Omega %>% add_trace( x = to_plot_points[[names_for_col[[shift+1]]]],
+                                       y = to_plot_points[[names_for_col[[shift+2]]]],
+                                       z = to_plot_points[[names_for_col[[shift+3]]]]
                                        #, 
                                       # size=size 
                                        ,marker = list(symbol = 'circle', 
@@ -33,17 +31,17 @@ plot_3d <- function(projection_points, axes="V", size =5, colors=brewer.pal(9,"G
                                     scene = list(
                                       aspectmode='cube',
                                       xaxis = list(
-                                      title = names_for_col[[1]],  
+                                        title = names_for_col[[shift+1]],
                                       titlefont = t
                                       
                                       ),
                                      yaxis = list(
-                                       title =names_for_col[[2]], 
+                                        title =names_for_col[[shift+2]],
                                        titlefont = t
                                       
                                        ),
                                      zaxis = list(
-                                       title = names_for_col[[3]],
+                                        title = names_for_col[[shift+3]],
                                        titlefont = t
                                      
                                        ))
@@ -52,4 +50,3 @@ plot_3d <- function(projection_points, axes="V", size =5, colors=brewer.pal(9,"G
   
   return(fig_Omega)
 }
-

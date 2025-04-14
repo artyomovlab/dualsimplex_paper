@@ -49,11 +49,14 @@ sampleFromSimplexUniformly <- function(n, k=3, M=100000, fixed_proportion=NULL) 
 }
 
 ## Generate all matrices using provides pictures_W matrix. H sampled from simplex.
-make_simulated_data<- function(M, N, K, noise_deviation = 0.1, noise_nature="proportional" ) {
+make_simulated_data<- function(M, N, K, noise_deviation = 0.1, add_pure=F, noise_nature="proportional" ) {
   
   H <-  matrix(runif(K*N, min = 0, max = 10),nrow=K )  
   W <-  t(matrix(runif(K*M, min = 0, max = 10),nrow=K ) )
-  
+  if (add_pure) {
+    H[1:K,1:K] <- diag(rep(1, K))
+  }
+
   V <- W %*% H
   
   rownames(V) <- c(paste0("feature", 1:nrow(V)))
