@@ -106,9 +106,21 @@ dso$plot_projected(
   use_dims = list(2:3)
 )
 ```
+## Error history
+As we describe in the paper -- we have multiple error terms.
+Behavior of which are controlled by parameters.
+Values coef_der_X and coef_der_Omega should be understood as learning rate and and lower values will lead to smaller steps of optimization. (they ae mu and nu from the paper)
+
+Values coef_hinge_H and coef_hinge_W (Lambda, Beta) are controlling the magnitude for negativity terms for matrix H and W respectively in the error.
+Since we have multiple terms we need to ensure that all terms are converging. 
+As we can see from this particular example: deconvolution term goes down first. Algorithm does not care about negativity which leads to increase in number of negative elements in the solution. But once deconvolution error is small enough algorithm will start opimizing negativity as well. 
+
+The idea in general is to keep error terms close to each other to allow optimization of all terms. You can see suplementary notes script for more details
 
 ```{r}
 dso$plot_error_history()
+dso$plot_negative_basis_change()
+dso$plot_negative_proportions_change()
 ```
 
 
@@ -164,7 +176,7 @@ Omega_hist$i <-  rep(0:blocks, each = 3)
 ```
 
 
-# Save error how it appears in the paper
+## Save error how it appears in the paper
 ```{r}
 plotErrorsWithRastr = function(metadata,
                                variables = c(
@@ -205,7 +217,7 @@ errors_plot <-
 
 
 ggsave(
-  file = "../out/3c_errors_trajectory.svg",
+  file = "../out/3d_errors_trajectory.svg",
   plot = errors_plot,
   width = 5,
   height = 3,
@@ -215,7 +227,7 @@ errors_plot
 ```
 
 
-## Triangles as how they are in paper
+## Save Triangles as how they are in paper
 ```{r}
 plot_gradient <- function(toPlot, endpoints, colors) {
   blocks <- max(endpoints$i)
@@ -278,7 +290,7 @@ plot_gradient <- function(toPlot, endpoints, colors) {
 ```
 
 
-## X
+### X
 ```{r}
 dims <- 3
 points_col <- brewer.pal(9, "Blues")
@@ -292,7 +304,7 @@ pltX <- plot_gradient(toPlot, X_hist, points_col)
 pltX <- pltX + xlab("R2") + ylab("R3")
 
 ggsave(
-  file = "../out/3c_x_optimization.svg",
+  file = "../out/3d_x_optimization.svg",
   plot = pltX,
   width = 5,
   height = 4,
@@ -302,7 +314,7 @@ pltX
 ```
 
 
-## Omega 
+### Omega 
 ```{r}
 toPlot <- as.data.frame(dso$st$proj$Omega)[, 1:dims]
 colnames(toPlot) <- c("X", "Y", "Z")
@@ -312,7 +324,7 @@ pltOmega <- plot_gradient(toPlot, Omega_hist, points_col)
 pltOmega <- pltOmega + xlab("S2") + ylab("S3")
 
 ggsave(
-  file = "../out/3c_omega_optimization.svg",
+  file = "../out/3d_omega_optimization.svg",
   plot = pltOmega,
   width = 5,
   height = 4,
@@ -337,6 +349,43 @@ plot_ptb_scatter(ptb)
 ```
 
 ```{r}
+plot_ptp_lines(ptp)
+```
+# Test if default optimization is working the same
+In general you don't need to tune parameters. 
+You candecrease learning rate  (coef_der_X, coef_der_Omega) gradually and for each learning_rate step increase contribution of negativity significantly.
+
+```{r fig.height = 5, fig.width = 11}
+set.seed(23)
+dso$init_solution("random")
+
+dso$default_optimization()
+dso$plot_projected(
+  "zero_distance",
+  "zero_distance",
+  with_solution = TRUE,
+  use_dims = list(2:3)
+)
+
+```
+
+```{r}
+dso$plot_error_history()
+dso$plot_negative_proportions_change()
+dso$plot_negative_basis_change()
+```
+
+## Test this solution
+```{r}
+solution <- dso$finalize_solution()
+names(solution)
+solution <- dso$get_solution()
+```
+
+```{r fig.width=20, fig.height=5}
+ptb <- coerce_pred_true_basis(solution$W, true_basis[rownames(solution$W), ])
+ptp <- coerce_pred_true_props(solution$H, true_proportions)
+plot_ptp_scatter(ptp)
 plot_ptp_lines(ptp)
 ```
 

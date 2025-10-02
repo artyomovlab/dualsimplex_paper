@@ -1,0 +1,473 @@
+---
+title: "Figure 5: NMF, Part 3."
+output: html_notebook
+---
+
+```{r}
+# path to results and to save everything
+dir_to_save_fig <- "../out/4_NMF/"
+dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
+source("../R/setup.R")
+source("../R/nmf_methods.R")
+source("../R/figure_utils.R")
+```
+
+
+# Analyze saved NMF results
+```{r}
+current_K <- 4
+current_M <- 16384
+current_N <- 100
+
+noise_deviation <- 2
+noise_nature <- "proportional" # proportional additive
+proportions <- "random_proportions" # simplex random_proportions
+```
+
+
+# Randomly generated proportions
+
+## Read dual simplex objects
+```{r}
+file_name <- paste0(
+  dir_to_save_fig,
+  noise_nature,
+  '_random_noise_',
+  noise_deviation,
+  '_',
+  proportions,
+  '_',
+  current_K ,
+  'K_',
+  current_N,
+  'N_',
+  current_M,
+  'M_random-H_10runs_10init_random.rds'
+)
+
+result_random <- readRDS(file = file_name)
+```
+
+## Check which methods we have here
+```{r}
+# remove backslash from name
+current_names <- names(result_random$fit_objects)
+if ("snmf/l" %in% current_names) {
+  current_names[current_names == "snmf/l"] <- "snmf_l"
+  names(result_random$fit_objects) <- current_names
+  result_random$fit_objects$snmf_l <-
+    lapply(result_random$fit_objects$snmf_l, function(result) {
+      result@method <- 'snmf_l'
+      return(result)
+    })
+  
+}
+
+print(current_names)
+```
+
+
+
+### Draw result pictures obtained by each method
+```{r fig.height = 5, fig.width = 5}
+
+individual_pictures <- T # plot single picture for a file or all K pictures
+
+if (individual_pictures) {
+  orig_pictures <- plot_single_pictures(result_random$data_used[[2]]$true_W, "original_picture", dir_to_save_fig)
+} else {
+
+orig_pictures <- plot_pictures(result_random$data_used[[2]]$true_W,  "original_pictures", dir_to_save_fig)
+}
+
+per_method_pictures <- plot_pictures_for_result(result_random$fit_objects, 
+                                                model_index = 1, 
+                                                dir_to_save_fig, 
+                                                individual_pictures = individual_pictures)
+for (k in 1:current_K) {
+  image(per_method_pictures$DualSimplex[[k]], col=grey(seq(0, 1, length = 64)), axes=0)
+}
+
+```
+
+
+
+### Plot boxplots with distances to original matrices
+
+```{r}
+result_random$fit_objects$PGNMF <- NULL # we remove this method, since it is performing realy poor
+```
+
+
+#### RMSE distance for rows/columns
+```{r fig.height = 5, fig.width = 20}
+metric <- "rmse"
+result_plots_rmse <-
+  plot_metrics_box(
+    res_methods = result_random$fit_objects,
+    folder_to_save_results = dir_to_save_fig,
+    data_used = result_random$data_used,
+    title = paste0(
+      metric,
+      "_",
+      noise_nature,
+      "_random_noise_",
+      noise_deviation,
+      '_',
+      proportions,
+      '_',
+      current_K ,
+      'K_',
+      current_N,
+      'N_',
+      current_M
+    ),
+    
+    W_signif_step = 0,
+    H_signif_step = 0,
+    V_signif_step = 0,
+    W_signif_margin_top = 0.2,
+    H_signif_margin_top = 0.05,
+    V_signif_margin_top = 0.05,
+    H_limit = NULL,
+    V_limit = NULL,
+    W_limit = NULL,
+    log_scale_V = T,
+    log_scale_W = T,
+    log_scale_H = T
+  )
+result_plots_rmse$plot
+result_plots_rmse$summarized_plot
+```
+
+
+#### Pearson correlation distance for rows/columns
+```{r fig.height = 5, fig.width = 20}
+metric <- "pearson_loss"
+result_plots_pearson <-
+  plot_metrics_box(
+    res_methods = result_random$fit_objects,
+    folder_to_save_results = dir_to_save_fig,
+    data_used = result_random$data_used,
+    W_metric = metric,
+    H_metric = metric,
+    V_metric = metric,
+    title = paste0(
+      metric,
+      "_",
+      noise_nature,
+      "_random_noise_",
+      noise_deviation,
+      '_',
+      proportions,
+      '_',
+      current_K ,
+      'K_',
+      current_N,
+      'N_',
+      current_M
+    ),
+    W_signif_step = 0.15,
+    H_signif_step = 0.15,
+    V_signif_step = 0.14,
+    W_signif_margin_top = 0.05,
+    H_signif_margin_top = 0.05,
+    V_signif_margin_top = 0.05,
+    W_limit = NULL,
+    H_limit = NULL,
+    V_limit = NULL,
+    log_scale_V = T,
+    log_scale_W = T,
+    log_scale_H = T
+  )
+result_plots_pearson$plot
+result_plots_pearson$summarized_plot
+```
+
+
+#### Make combined plot as it is in the paper
+```{r fig.height = 15, fig.width = 15}
+title <- paste0(
+  noise_nature,
+  "_random_noise_",
+  noise_deviation,
+  '_',
+  proportions,
+  '_',
+  current_K ,
+  'K_',
+  current_N,
+  'N_',
+  current_M
+)
+
+
+result_plot <-
+  ggarrange(
+    result_plots_rmse$V_plot,
+    result_plots_pearson$V_plot,
+    result_plots_rmse$summarized_W,
+    result_plots_pearson$summarized_W,
+    result_plots_rmse$summarized_H,
+    result_plots_pearson$summarized_H,
+    nrow = 3,
+    ncol = 2,
+    common.legend = T,
+    legend = 'none',
+    align = "hv"
+  )
+
+filename <- paste0(dir_to_save_fig, "result_plot_for_figure_", title, ".svg")
+ggsave(
+  filename,
+  result_plot,
+  width = 7.5,
+  height = 15,
+  device = svglite
+)
+result_plot
+```
+
+
+# Nice visualization with plotly
+```{r}
+result_var <- result_plots_pearson
+t <- result_var$W_matrix_distances
+median_df_W <- t %>%
+  group_by(method, run) %>%
+  summarize(average = median(.data[[metric]])) %>%
+  ungroup()
+
+
+t <- result_var$H_matrix_distances
+median_df_H <- t %>%
+  group_by(method, run) %>%
+  summarize(average = median(.data[[metric]])) %>%
+  ungroup()
+
+
+t <- result_var$D_matrix_distances
+median_df_D <- t %>%
+  group_by(method, run) %>%
+  summarize(average = median(.data[["diff"]])) %>%
+  ungroup() 
+```
+
+
+## Select specific model index
+```{r}
+dso <- result_random$fit_objects$DualSimplex[[1]]@misc$obj
+data_used <- result_random$data_used[[1]]
+```
+
+
+## Identify X and Omega for true coordinates
+```{r}
+sol_no_corr <- dso$st$solution_no_corr
+
+W_solution <- sol_no_corr$Dv_inv_W_row
+W_solution[W_solution < 0] = 0
+H_solution <- sol_no_corr$H_row
+H_solution[H_solution < 0] <- 0
+
+true_V <- data_used$V[rownames(W_solution), colnames(H_solution)]
+true_V_noizy <- data_used$noizy_V[rownames(W_solution), colnames(H_solution)]
+true_W <- data_used$true_W[rownames(W_solution), ]
+true_H <- data_used$true_H[, colnames(H_solution)]
+```
+
+```{r}
+true_solution_coordinates <-  dso$get_coordinates_from_external_matrices(true_W, true_H)
+X_true <- true_solution_coordinates$X
+Omega_true <-  t(true_solution_coordinates$Omega)
+
+
+```
+
+
+## Prepare final coordinate points
+```{r}
+library(plotly)
+dims <- dso$st$n_cell_types
+## Prepare set of points
+### True corners
+X <- X_true
+Omega <- Omega_true
+X <- X[, 1:dims]
+Omega <- Omega[1:dims, ]
+colnames(X) <- paste0("R", c(1:dims))
+rownames(Omega) <- paste0("S", c(1:dims))
+
+
+### Solution corners
+X_solution <- dso$st$solution_proj$X
+Omega_solution <- t(dso$st$solution_proj$Omega)
+X_solution <- X_solution[, 1:dims]
+Omega_solution <- Omega_solution[1:dims, ]
+colnames(X_solution) <- paste0("R", c(1:dims))
+rownames(Omega_solution) <- paste0("S", c(1:dims))
+
+## Just all the points
+### X space
+toPlotX <- as.data.frame(dso$st$proj$X)[, 1:dims]
+colnames(toPlotX) <- paste0("R", c(1:dims))
+### Omega space
+toPlotOmega <- as.data.frame(dso$st$proj$Omega)[, 1:dims]
+colnames(toPlotOmega) <- paste0("S", c(1:dims))
+```
+
+
+## Join solution points into geometrical shape
+```{r}
+get_line_between_points <- function(X_p, Omega_p) {
+  n <- 2
+  l <- rep(list(1:nrow(X_p)), n)
+  permutations <- expand.grid(l)
+  indices <- c(t(as.matrix(permutations[permutations[, "Var1"] < permutations[, 'Var2'], ])))
+  X_points <- X_p[indices, ]
+  Omega_points <- Omega_p[, indices]
+  return(list(X_points = X_points, Omega_points = Omega_points))
+}
+
+## Prepare lines to draw between corners true
+line_result <- get_line_between_points(X, Omega)
+X_points <- line_result$X_points
+Omega_points <- line_result$Omega_points
+
+## Prepare lines to draw between corners true
+line_result <- get_line_between_points(X_solution, Omega_solution)
+X_points_solution <- line_result$X_points
+Omega_points_solution <- line_result$Omega_points
+```
+
+
+## Plot X
+```{r}
+t <- list(family = "Helvetica",
+          size = 30)
+
+fig_X <-
+  plot_ly(
+    toPlotX,
+    width = 500,
+    height = 500,
+    type = 'scatter3d',
+    mode = 'markers'
+  ) %>%
+  config(toImageButtonOptions = list(
+    format = "svg",
+    width = 600,
+    height = 600
+  )) %>%
+  add_trace(
+    x = ~ R2,
+    y = ~ R3,
+    z = ~ R4,
+    size = 1,
+    marker = list(
+      symbol = 'circle',
+      color = "gray",
+      opacity = 0.6,
+      line = list(
+        color = 'black',
+        opacity = 0.4,
+        width = 1
+      )
+    )
+  ) %>%
+  add_trace(
+    name = "True points",
+    x = X_points[, 'R2'],
+    y = X_points[, 'R3'],
+    z = X_points[, 'R4'],
+    marker = list(color = 'orange'),
+    line = list(color = 'rgb(44, 160, 44)', width = 5),
+    mode = 'markers+lines'
+  ) %>%
+  add_trace(
+    name = "Predicted points",
+    x = X_points_solution[, 'R2'],
+    y = X_points_solution[, 'R3'],
+    z = X_points_solution[, 'R4'],
+    marker = list(color = 'orange'),
+    line = list(color = 'rgb(160, 0, 44)', width = 5),
+    mode = 'markers+lines'
+  )
+
+
+fig_X <- fig_X %>% layout(showlegend = FALSE,
+                          scene = list(
+                            xaxis = list(title = 'R2',  titlefont = t),
+                            yaxis = list(title = 'R3', titlefont = t),
+                            zaxis = list(title = 'R4', titlefont = t)
+                          )) %>% config(toImageButtonOptions = list(
+                            format = "svg",
+                            width = 600,
+                            height = 600
+                          ))
+
+fig_X
+```
+
+## Plot Omega
+```{r}
+n <- 2
+
+fig_Omega <-
+  plot_ly(
+    toPlotOmega,
+    width = 500,
+    height = 500,
+    type = 'scatter3d',
+    mode = 'markers'
+  ) %>%
+  config(toImageButtonOptions = list(
+    format = "svg",
+    width = 600,
+    height = 600
+  )) %>%
+  add_trace(
+    x = ~ S2,
+    y = ~ S3,
+    z = ~ S4,
+    size = 3,
+    marker = list(
+      symbol = 'circle',
+      size = 5,
+      opacity = 0.6,
+      color = "gray",
+      line = list(color = 'black', width = 3)
+    )
+  ) %>%
+  add_trace(
+    x = Omega_points['S2', ],
+    y = Omega_points['S3', ],
+    z = Omega_points['S4', ],
+    marker = list(color = 'orange'),
+    line = list(color = 'rgb(44, 160, 44)', width = 5),
+    mode = 'markers+lines'
+  ) %>%
+  add_trace(
+    x = Omega_points_solution['S2', ],
+    y = Omega_points_solution['S3', ],
+    z = Omega_points_solution['S4', ],
+    marker = list(color = 'orange'),
+    line = list(color = 'rgb(0, 44, 160)', width = 5),
+    mode = 'markers+lines'
+  )
+
+
+fig_Omega <- fig_Omega %>% layout(showlegend = F,
+                                  scene = list(
+                                    xaxis = list(title = 'S2',  titlefont = t),
+                                    yaxis = list(title = 'S3', titlefont = t),
+                                    zaxis = list(title = 'S4', titlefont = t)
+                                  )) %>% config(toImageButtonOptions = list(
+                                    format = "svg",
+                                    width = 600,
+                                    height = 600
+                                  ))
+
+fig_Omega
+```
+

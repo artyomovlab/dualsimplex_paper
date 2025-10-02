@@ -1,0 +1,501 @@
+# Dependencies
+
+```{r}
+source('../R/setup.R')
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(svglite)
+dyn.load('/usr/lib/jvm/java-11-openjdk-amd64/lib/server/libjvm.so') # was not able to make rstudio like this
+library(rJava)
+dir_to_save_fig <- "../out/6_dream_sb/"
+dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
+set.seed(1234)
+```
+
+# Load the data
+
+```{r}
+per_dataset_matrix <- readRDS("../data/large/DREAM_datasets.rds") 
+per_dataset_proportions <- readRDS("../data/large/DREAM_proportions.rds") 
+per_method_per_dataset_proportions <- readRDS("../data/large/DREAM_signature_methods_results.rds") # only those having results for fine graned
+```
+
+### Download markers 
+
+```{r}
+transform_markers_to_list <- function(markers_df) {
+  result_markers_list <- list()
+  for (item in colnames(markers_df)) {
+  result_markers_list[[item]] <- markers_df[[item]][markers_df[[item]]!= ""]
+  result_markers_list[[item]] <-   result_markers_list[[item]][!is.na( result_markers_list[[item]])]
+}
+  return(result_markers_list)
+}
+
+cancer_name_by_dataset <- list(DS1="Breast_C", 
+                     DS2="CRC_C",
+                     DS3="Breast_C",
+                     DS4="CRC_C",
+                     AA="Breast_C",
+                     AB="CRC_C",
+                     AE="Breast_C",
+                     AF="CRC_C"
+                     )
+
+
+markers_file <- "../data/large/DREAM_markers_lima_20.csv"
+marker_df <- read.csv(markers_file, sep=",")
+global_marker_list <-  transform_markers_to_list(marker_df)
+
+```
+
+## Prepare DualSimplex method
+
+
+```{r}
+
+deconvolve_with_DualSimplex_with_markers <-  function(mat, K, marker_list) {
+  data_raw <- as.matrix(mat)
+
+  data_raw <-  linearize_dataset(data_raw)
+  data_raw <- data_raw[intersect(unlist(marker_list), rownames(data_raw)), ]
+  dso <- DualSimplexSolver$new()
+  data_raw <-  remove_zero_rows(data_raw)
+  
+  
+  
+  dso$set_data(data_raw, max_sinkhorn_iterations = 300, max_dim = min(dim(data_raw)[[2]], 30), sinkhorn_tol = 1e-16)
+  dso$project(K)
+  print("Initial data size")
+  print(dim(dso$get_data()))
+  ##### Optimization #####
+  dso$project(K)
+  dso$init_solution("select_x")
+  dso$default_optimization()
+  solution <- dso$finalize_solution()
+  return(list(object=dso, proportions=solution$H))
+}
+
+```
+
+
+## Collect all solutions into single list
+
+```{r}
+per_run_results <-  list()
+methods_to_check <-  c("DualSimplex", names(per_method_per_dataset_proportions))
+```
+
+## Run all methods
+```{r fig.show='hide'}
+
+per_run_results <-  list()
+for (current_method in methods_to_check) {
+  print(paste("Method", current_method))
+  per_run_results[[current_method]] <-  list()
+  per_run_results[[current_method]][['object']] <-  list()
+  per_run_results[[current_method]][['proportions']] <-  list()
+  per_run_results[[current_method]][['correlation_plot']] <-  list()
+  per_run_results[[current_method]][['proportions_plot']] <-  list()
+  
+  for (selected_dataset in names(per_dataset_matrix)) {
+    print(paste("Dataset", selected_dataset))
+    input_matrix <- per_dataset_matrix[[selected_dataset]]
+    current_true_proportions <- per_dataset_proportions[[selected_dataset]][, colnames(input_matrix)]
+    target_marker_list <- global_marker_list[rownames(per_dataset_proportions[[selected_dataset]])]
+    target_marker_list[cancer_name_by_dataset[[selected_dataset]]] <- global_marker_list[cancer_name_by_dataset[[selected_dataset]]]
+    
+    # We set K + 1 since we know that cancer is always present in the data
+    K <-  dim(current_true_proportions)[[1]] + 1
+
+    if (current_method == "DualSimplex") {
+      result_list <- deconvolve_with_DualSimplex_with_markers(input_matrix, K, marker_list = target_marker_list)
+      
+    }
+    else {
+      result_list = list(proportions= per_method_per_dataset_proportions[[current_method]][[selected_dataset]],
+                         object = NULL)
+    }
+    
+    print("writing results")
+    estimated_proportions <- result_list$proportions
+    result_object <- result_list$object
+    # Now fix proportions to match true proportions
+    reordering_result <- reorder_and_plot_correlation(estimated_proportions, current_true_proportions)
+    reordered_proportions <- estimated_proportions[unlist(reordering_result$cell_type_mapping),]
+    # Save some plots for inspection
+    correlation_plot <-  reordering_result$correlation_plot
+    per_run_results[[current_method]][['object']][[selected_dataset]] <-  result_object
+    per_run_results[[current_method]][['proportions']][[selected_dataset]] <-  reordered_proportions
+    per_run_results[[current_method]][['correlation_plot']][[selected_dataset]] <-  correlation_plot
+  }
+}
+  
+```
+
+
+## Save all results
+
+```{r}
+dir_to_save_fig <- "../out/9_dream_sb/"
+saveRDS(per_run_results,file = paste0(dir_to_save_fig, "total_results_dream_sb.rds"))
+
+
+
+
+```
+
+
+## Load all results
+
+```{r}
+per_run_results <- readRDS( paste0(dir_to_save_fig, "total_results_dream_sb.rds"))
+
+
+```
+
+
+
+
+## Get metric values and plot
+
+
+
+```{r}
+source("../R/plotting_methods.R")
+methods_to_check <-  names(per_run_results)
+custom_colors <-  c("#E41A1C", "#A0CBE8FF", "#F28E2BFF", "#FFBE7DFF", "#59A14FFF", "#8CD17DFF", "#B6992DFF", "#F1CE63FF", "#499894FF", "#86BCB6FF", "#4E79A7FF", "#FF9D9AFF", "#79706EFF", "#BAB0ACFF", "#D37295FF", "#FABFD2FF", "#B07AA1FF", "#D4A6C8FF", "#9D7660FF", "#D7B5A6FF")
+
+custom_colors <-  custom_colors[1:length(custom_colors)]
+comparisons <-  list(c("DualSimplex", "Aginome-XMU"), c("DualSimplex", "xCell"), c("DualSimplex", "mitten_TDC19"))
+# comparisons <-  list(c("DualSimplex", "Linseed"), c("DualSimplex", "TOAST"), c("DualSimplex", "CAM3"), c("DualSimplex", "CellDistinguisher"))
+names(comparisons) <- c("Aginome-XMU", "xCell")
+```
+
+## For all datasets
+```{r}
+selected_datasets <- names(per_dataset_proportions)
+```
+
+### RMSE values
+```{r fig.width=20, fig.height=5}
+library(dplyr)
+metric <-  "rmse_loss"
+
+separate_results <-  list()
+for (selected_dataset in selected_datasets) {
+  current_true_proportions <-  per_dataset_proportions[[selected_dataset]]
+  current_dataset_estimated_matrices <- lapply(per_run_results, function(current_result) {current_result$proportions[[selected_dataset]][1:dim(current_true_proportions)[[1]],]})
+  names(current_dataset_estimated_matrices) <-  names(per_run_results)
+  current_metric_values <- get_metric_values(current_dataset_estimated_matrices, current_true_proportions, metric = metric, per_row = T, normalize = T)
+  current_metric_values$dataset <-  selected_dataset
+  separate_results[[selected_dataset]] <- current_metric_values
+}
+
+total_result <-  do.call(rbind, separate_results)
+total_result$method <-  as.factor(total_result$method)
+sorted_by_median_metric <- total_result %>% dplyr::group_by(method) %>% 
+  dplyr::summarise(median_metric = median(metric_value)) %>% 
+  dplyr::arrange(median_metric)
+method_order <- sorted_by_median_metric$method
+ # sort comparisons according to order
+# 
+total_result$method <- factor(total_result$method, levels=method_order)
+
+total_result$cell_type <- as.factor(total_result$cell_type)
+total_result$metric_value <- as.numeric(total_result$metric_value)
+
+
+box_plot_rmse <-  plot_single_boxplot(total_result, 
+                                      comparisons =comparisons,
+                                      title = "Distance to original proportion rows", 
+                                      metric_title = get_metric_plot_title(metric), log_scale = F, test="t.test", custom_colors = custom_colors) 
+box_plot_rmse
+```
+
+
+### Pearson values
+
+```{r fig.width=20, fig.height=5}
+metric <-  "pearson_loss"
+
+
+separate_results <-  list()
+for (selected_dataset in selected_datasets) {
+  current_true_proportions <-  per_dataset_proportions[[selected_dataset]]
+  current_dataset_estimated_matrices <- lapply(per_run_results, function(current_result) {current_result$proportions[[selected_dataset]][1:dim(current_true_proportions)[[1]],]})
+  names(current_dataset_estimated_matrices) <-  names(per_run_results)
+  current_metric_values <- get_metric_values(current_dataset_estimated_matrices, current_true_proportions, metric = metric, per_row = T, normalize = T)
+  current_metric_values$dataset <-  selected_dataset
+  separate_results[[selected_dataset]] <- current_metric_values
+}
+
+total_result <-  do.call(rbind, separate_results)
+total_result$method <-  as.factor(total_result$method)
+sorted_by_median_metric <- total_result %>% dplyr::group_by(method) %>% 
+  dplyr::summarise(median_metric = median(metric_value)) %>% 
+  dplyr::arrange(median_metric)
+method_order <- sorted_by_median_metric$method
+# sort comparisons according to order
+
+total_result$method <- factor(total_result$method, levels=method_order)
+
+total_result$cell_type <- as.factor(total_result$cell_type)
+total_result$metric_value <- as.numeric(total_result$metric_value)
+
+
+box_plot_pearson <-  plot_single_boxplot(total_result, 
+                                      comparisons =comparisons,
+                                      title = "Distance to original proportion rows", 
+                                      metric_title = get_metric_plot_title(metric), log_scale = F, custom_colors = custom_colors) 
+box_plot_pearson
+
+```
+
+
+
+## Prepare correlation plots
+
+```{r fig.width=18, fig.height=12}
+library(ggpubr)
+for (param_names in names(per_run_results)) {
+  current_plot_list <- per_run_results[[param_names]]$correlation_plot
+  for (dataset_name in names(current_plot_list)) {
+    current_plot_list[[dataset_name]] <-  current_plot_list[[dataset_name]] + ggtitle(paste("Dataset", dataset_name))
+  }
+  per_run_results[[param_names]]$correlation_plot <- current_plot_list
+}
+
+correlation_plots <- list()
+
+for (param_names in names(per_run_results)) {
+  res_1 <-  ggarrange(plotlist = per_run_results[[param_names]]$correlation_plot, nrow=3, ncol=3, common.legend = T, legend="bottom")
+  res_1 <-  annotate_figure(res_1, top = ggpubr::text_grob(param_names,  color = "black", face = "bold", size = 14))
+  correlation_plots[[param_names]] <-  res_1
+}
+
+correlation_plots
+```
+
+## Prepare correlation tables
+```{r fig.width=18, fig.height=12}
+library(ggpubr)
+
+per_dataset_per_method_correlations <-  lapply(selected_datasets, function(dataset_name) {
+  current_true_proportions <-  per_dataset_proportions[[dataset_name]]
+  current_dataset_estimated_matrices <- lapply(per_run_results, function(current_result){
+    current_result$proportions[[dataset_name]]})
+  print("found methods")
+  print(names(current_dataset_estimated_matrices))
+  per_method_result <-  lapply(names(current_dataset_estimated_matrices), function(param_names) {
+  estimated_matrix <- current_dataset_estimated_matrices[[param_names]]
+  estimated_matrix <-  estimated_matrix[, colnames(current_true_proportions)]
+  new_row_order <-  guess_order(estimated_matrix, current_true_proportions)
+  reordered_matrix <-  estimated_matrix[unlist(new_row_order), ]
+  rownames(reordered_matrix) <-  names(new_row_order)
+  result_data <- get_metric_matrix_for_rows(reordered_matrix, current_true_proportions, metric="pearson")
+    result_data <- as.data.frame(result_data)
+    result_data$asigned_cell_type <- rownames(result_data)
+    result_data$method <- param_names
+    
+  return(result_data)
+  })
+   names(per_method_result) <-  names(current_dataset_estimated_matrices)
+   single_dataset_result <-  rbindlist(per_method_result)
+   single_dataset_result$dataset <- dataset_name
+
+   return(single_dataset_result)
+})
+names(per_dataset_per_method_correlations) <-  selected_datasets
+  
+  
+result_correlation_table <- as.data.frame(rbindlist(per_dataset_per_method_correlations, fill = TRUE))
+```
+
+
+```{r}
+write.csv(result_correlation_table, file =  paste0(dir_to_save_fig, "total_correlation_table.csv"))
+```
+
+```{r}
+unique(result_correlation_table$dataset)
+```
+
+```{r}
+per_run_results
+```
+
+```{r}
+test <-  correlation_plots$DualSimplex$data
+```
+
+### Plot umaps
+
+
+```{r}
+custom_colors <- unname(Polychrome::palette36.colors(length(names(global_marker_list))))
+custom_colors[2] <-  "#C4451C"
+
+names(custom_colors) <-  names(global_marker_list)
+
+per_dataset_umap <- list()
+per_dataset_umap_no_legend <- list()
+per_dataset_umap_with_solution <- list()
+per_dataset_umap_with_solution_and_history <- list()
+
+
+for (dataset_name in names(per_dataset_proportions)) {
+  dso <- per_run_results$DualSimplex$object[[dataset_name]]
+  dso$run_umap(neighbors_X = 15, neighbors_Omega = 3)
+  target_marker_list <- global_marker_list[rownames(per_dataset_proportions[[dataset_name]])]
+  target_marker_list[cancer_name_by_dataset[[dataset_name]]] <- global_marker_list[cancer_name_by_dataset[[dataset_name]]]
+  dso$st$marker_genes <- target_marker_list
+  result_plots <-  dso$plot_projected("markers", "zero_distance", use_dims = NULL, 
+                                     with_history = F, 
+                                     with_solution=F, 
+                                     with_legend = T, 
+                                     wrap=F )
+  genes_umap <- result_plots[[1]]
+  per_dataset_umap[[dataset_name]] <- genes_umap + scale_color_manual(values=unlist(custom_colors[names(target_marker_list)]))
+  per_dataset_umap_no_legend[[dataset_name]] <- genes_umap + theme(legend.position = "none") + scale_color_manual(values=unlist(custom_colors[names(target_marker_list)]))
+  per_dataset_umap_with_solution[[dataset_name]] <- dso$plot_projected("zero_distance", "zero_distance", use_dims = NULL, 
+                                     with_history = F, 
+                                     with_solution=T, 
+                                     with_legend = F, 
+                                     wrap=F )[[1]] 
+  
+  per_dataset_umap_with_solution_and_history[[dataset_name]] <- dso$plot_projected("zero_distance", "zero_distance", use_dims = NULL, 
+                                     with_history = T, 
+                                     with_solution=T, 
+                                     with_legend = F, from_iter = 10000,
+                                     wrap=F )[[1]] 
+
+
+}
+
+```
+
+
+```{r}
+dso$plot_error_history()
+```
+
+## Save figures
+
+## Save all figures to files
+
+
+```{r}
+### original plots
+
+filename <- paste0(dir_to_save_fig, "umap_X_no_legend_DS4", ".svg")
+ggsave(
+  file = filename,
+  plot = per_dataset_umap_no_legend$DS4,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "umap_X_with_legend_DS4", ".svg")
+ggsave(
+  file = filename,
+  plot = per_dataset_umap$DS4,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "umap_X_with_solution_no_legend_DS4", ".svg")
+ggsave(
+  file = filename,
+  plot = per_dataset_umap_with_solution$DS4,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+
+
+filename <- paste0(dir_to_save_fig, "umap_X_no_legend_AA", ".svg")
+ggsave(
+  file = filename,
+  plot = per_dataset_umap_no_legend$AA,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "umap_X_with_legend_AA", ".svg")
+ggsave(
+  file = filename,
+  plot = per_dataset_umap$AA,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+
+### Metrics
+
+result_plot <-
+  ggarrange(
+    box_plot_pearson,
+    box_plot_rmse,
+    nrow = 2,
+    ncol = 1,
+    common.legend = T,
+    legend = 'right',
+    align = "hv"
+  )
+
+filename <- paste0(dir_to_save_fig, "metrics_plot_with_legend", ".svg")
+ggsave(
+  filename,
+  result_plot,
+  width = 12,
+  height = 8,
+  device = svglite
+)
+
+
+result_plot <-
+  ggarrange(
+    box_plot_pearson,
+    box_plot_rmse,
+    nrow = 2,
+    ncol = 1,
+    common.legend = T,
+    legend = 'none',
+    align = "hv"
+  )
+
+filename <- paste0(dir_to_save_fig, "metrics_plot_no_legend", ".svg")
+ggsave(
+  filename,
+  result_plot,
+  width = 12,
+  height = 8,
+  device = svglite
+)
+
+
+
+
+
+for (method_name in names(correlation_plots)) {
+  filename <- paste0(dir_to_save_fig, "correlations_", method_name, ".svg")
+  ggsave(
+  filename,
+  correlation_plots[[method_name]],
+  width = 18,
+  height = 12,
+  device = svglite
+)
+}
+
+
+```
+
+

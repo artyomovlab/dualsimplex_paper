@@ -3,7 +3,6 @@ library('NMF')
 library(ggplot2)
 library(gtable)
 library(data.table)
-
 library(ggsignif)
 library('ComplexHeatmap')
 library('GEOquery')
@@ -143,8 +142,6 @@ dualsimplex_nmf_algorithm <- function(x, seed,
                                     ){
   source('../R/setup.R') # import main package. this this is temporary and only works when running from figures directory
   factorization_rank <- nbasis(seed)
-  
-  
   dso <-  DualSimplexSolver$new()
   dso$set_data(x)
   dso$project(factorization_rank)
@@ -155,8 +152,6 @@ dualsimplex_nmf_algorithm <- function(x, seed,
   print(paste("current params", start_with_hinge_H, start_with_hinge_W))
   original_lambda_term <- start_with_hinge_H  #coef_hinge_H
   original_beta_term <- start_with_hinge_W #coef_hinge_W
-  
-  
   for  (lr_step in 1:LR_DECAY_STEPS) {
     lambda_term <-  original_lambda_term * lr_x * lr_x
     beta_term <- original_beta_term   * lr_omega * lr_omega
@@ -178,10 +173,8 @@ dualsimplex_nmf_algorithm <- function(x, seed,
     lr_omega <-  lr_omega * lr_decay
     
   }
-
   solution <- dso$finalize_solution() # this performs reverse sinkhorn procedure 
   sol_no_corr <-  dso$st$solution_no_corr  # factorization calculated from 1 step of sinkhorn
-
   # W matrix
   W <- sol_no_corr$Dv_inv_W_row
   W[W < 0] <-  0
@@ -202,8 +195,6 @@ dualsimplex_nmf_algorithm <- function(x, seed,
   seed$obj <- dso
   
   print("Getting distance solution")
-
-
   distance <- nmfDistance(objective(seed))(seed, x)
   print(paste("objective is ", distance) )
   if (is.na(distance)) {
@@ -352,94 +343,6 @@ als_nmf_algorithm <- function(x, seed){
 
 #### Plot methods ####
 
-# Metric to compare models
-pearson_correlation_function <- function(target, w){
-  1-cor(w, target, method ="pearson")^2
-       # + eta * sum(w^2) 
-       # + beta * sum( colSums( h )^2 )
-}
-
-# Metric to compare models
-cosine_distance_function <- function(target, w){
-  1-lsa::cosine(w, target)
-  # + eta * sum(w^2) 
-  # + beta * sum( colSums( h )^2 )
-}
-
-spearman_correlation_function <- function(target, w){
-  1-cor(w, target, method ="spearman")^2
-  # + eta * sum(w^2) 
-  # + beta * sum( colSums( h )^2 )
-}
-
-# Metric to compare models
-RMSE_function <- function(target, w){
-  
-  sqrt((1/(length(w)) * sum( (target - w )^2 )) 
-       # + eta * sum(w^2) 
-       # + beta * sum( colSums( h )^2 )
-  )
-}
-
-# Metric to compare models, will scale matrices (since methods get different scales) 
-normalized_RMSE_function <- function(target, w){
-  w[w < 0] <-  0
-  target <- (target - min(target)) / (max(target) - min(target))
-  w <- (w - min(w)) / (max(w) - min(w))
-  
-  sqrt((1/(length(w)) * sum((target - w )^2 )) 
-       # + eta * sum(w^2) 
-       # + beta * sum( colSums( h )^2 )
-  )
-}
-
-# Will calculate RMSE distances for each component (column)
-get_metric_distances_by_column <- function(original_matrix, curr_matrix, metric="rmse"){
-  col_num <-  dim(original_matrix)[[2]]
-  distances <-  sapply(c(1:col_num), function(original_component_index){
-    candidates <- lapply(c(1:col_num), function(current_component_index){
-      # print(paste(original_component_index,current_component_index))
-      #return (RMSE_function(original_matrix[,original_component_index], curr_matrix[,current_component_index]))
-      result <-  switch(metric, 
-                        "rmse" = RMSE_function(original_matrix[,original_component_index], curr_matrix[,current_component_index]),
-                        "pearson" = pearson_correlation_function(original_matrix[,original_component_index], curr_matrix[,current_component_index]),
-                        "spearman" = spearman_correlation_function(original_matrix[,original_component_index], curr_matrix[,current_component_index]),
-                        "cosine" = cosine_distance_function(original_matrix[,original_component_index], curr_matrix[,current_component_index]))
-      return(result)
-    })
-    # print(unlist(candidates))
-    return (min(unlist(candidates)))
-  })
-  return (setNames(data.table(c(1:col_num), unlist(distances)), c("component", metric)))
-}
-
-# Will calculate RMSE distances for each component (row)
-get_metric_distances_by_row <- function(original_matrix, curr_matrix, metric="rmse"){
-  current_K <-  dim(original_matrix)[[1]]
-  distances <-  sapply(c(1:current_K), function(original_component_index){
-    
-    candidates <- lapply(c(1:current_K), function(current_component_index){
-      # print(paste(original_component_index,current_component_index))
-      result <-  switch(metric, 
-                        "rmse" = RMSE_function(
-                          original_matrix[original_component_index,], curr_matrix[current_component_index,]),
-                        "pearson" = pearson_correlation_function(
-                          original_matrix[original_component_index,], curr_matrix[current_component_index,]),
-                        "spearman" = spearman_correlation_function(
-                          original_matrix[original_component_index,], curr_matrix[current_component_index,]),
-                        "cosine" = cosine_distance_function(
-                          original_matrix[original_component_index,], curr_matrix[current_component_index,]))
-      
-      
-      return (RMSE_function(original_matrix[original_component_index,], curr_matrix[current_component_index,]))
-    })
-    # print(unlist(candidates))
-    return (min(unlist(candidates)))
-  })
-  return (setNames(data.table(c(1:current_K), unlist(distances)), c("component", metric)))
-}
-
-
 # Will calculate RMSE distances for each component (row)
 get_D_distances_on_diagonal <- function(original_matrix, curr_matrix){
   current_K <-  dim(original_matrix)[[1]]
@@ -464,59 +367,35 @@ get_D_distances_on_diagonal <- function(original_matrix, curr_matrix){
 
 ## Will calculate RMSE distances for each method and each run. W matrix.
 get_W_metric_values <- function(res_methods, data_used, metric="rmse") {
-  
-  per_method_tables <- lapply(names(res_methods), function (method_name){
-    curr_method_result <- res_methods[[method_name]]
-    per_run_tables <- lapply(c(1:length(curr_method_result)), function(current_run) {
-      run_result <- curr_method_result[[current_run]]
-      curr_data <-  data_used[[current_run]]
-      curr_W <- run_result$W
-      true_W <- curr_data$true_W
-      distances_table <- get_metric_distances_by_column(true_W, curr_W,metric=metric)
-      distances_table$run <- current_run
-      return(distances_table)
-    })
-    method_df <- rbindlist(per_run_tables)
-    
-    method_df$method <- method_name
-    return(method_df)
-    
+  total_runs <- length(data_used)
+  per_run_tables <- lapply(c(1:total_runs), function(current_run){
+    this_run_results <-  lapply(res_methods, function(x) x[[current_run]]$W)
+    this_run_table <-  DualSimplex::get_metric_values(this_run_results, true_matrix =data_used[[current_run]]$true_W, per_row = FALSE, metric = metric)
+    this_run_table$run <- current_run
+    this_run_table$component <- as.numeric(this_run_table$cell_type)
+    this_run_table[[metric]] <- this_run_table$metric_value
+    return(this_run_table)
   })
-  
-  total_df <- rbindlist(per_method_tables)
+  total_df <- rbindlist(per_run_tables)
   return(total_df)
 }
 
 
 ## Will calculate RMSE distances for each method and each run. H matrix.
 get_H_metric_values <- function(res_methods, data_used, metric="rmse") {
-  per_method_tables <- lapply(names(res_methods), function (method_name){
-    curr_method_result <- res_methods[[method_name]]
-    per_run_tables <- lapply(c(1:length(curr_method_result)), function(current_run) {
-      run_result <- curr_method_result[[current_run]]
-      curr_data <- data_used[[current_run]]
-      curr_H <- run_result$H
-      curr_W <- run_result$W
-
-      true_H <- curr_data$true_H
-      true_W <- curr_data$true_W
-
-      
-      distances_table <- get_metric_distances_by_row(true_H, curr_H, metric=metric)
-      distances_table$run <- current_run
-      return(distances_table)
-    })
-    method_df <- rbindlist(per_run_tables)
-    
-    method_df$method <- method_name
-    return(method_df)
-    
+  total_runs <- length(data_used)
+  per_run_tables <- lapply(c(1:total_runs), function(current_run){
+    this_run_results <-  lapply(res_methods, function(x) x[[current_run]]$H)
+    this_run_table <-  DualSimplex::get_metric_values(this_run_results, true_matrix =data_used[[current_run]]$true_H, per_row = T, metric = metric)
+    this_run_table$run <- current_run
+    this_run_table$component <- as.numeric(this_run_table$cell_type)
+    this_run_table[[metric]] <- this_run_table$metric_value
+    return(this_run_table)
   })
-  
-  total_df <- rbindlist(per_method_tables)
+  total_df <- rbindlist(per_run_tables)
   return(total_df)
 }
-
+  
 
 get_V_metric_values <- function(res_methods, data_used, metric="rmse") {
   per_method_tables <- lapply(names(res_methods), function (method_name){
@@ -537,9 +416,9 @@ get_V_metric_values <- function(res_methods, data_used, metric="rmse") {
       curr_V <- curr_W %*% curr_D %*% curr_H
       true_V <- true_W %*% true_D %*% true_H
       distance <-  switch(metric, 
-                          "rmse" = RMSE_function( true_V, curr_V),
-                          "pearson" = mean(diag(pearson_correlation_function(true_V, curr_V))),
-                          "spearman" = mean(diag(spearman_correlation_function(true_V, curr_V))))
+                          "rmse" = DualSimplex::normalized_rmse_loss_function( true_V, curr_V),
+                          "pearson_loss" = mean(diag(DualSimplex::pearson_loss_function(true_V, curr_V))),
+                          "pearson_loss" = mean(diag(DualSimplex::spearman_loss_function(true_V, curr_V))))
       distances_table <-  setNames(data.table(distance), c(metric))
       distances_table$run <- current_run
       return(distances_table)
@@ -609,6 +488,9 @@ correct_solution_to_normalize_H_and_W <- function(solution_W, solution_H) {
   
   new_W <-  solution_W %*% D_w  # should get col normalized W
   new_H <-  D_h %*% solution_H # should get row normalized H
+  
+  dimnames(new_W) <- dimnames(solution_W)
+  dimnames(new_H) <- dimnames(solution_H)
   D_inv <-  D_w_inv %*% D_h_inv
   return (list(new_W=new_W, new_H=new_H, D_inv=D_inv))
 }
@@ -631,6 +513,7 @@ correct_method_matrices_to_make_them_comparable <- function(res_methods) {
       run_result@fit@H <-  curr_W
       return(list(H=curr_H, W=curr_W, D_inv=correction_result$D_inv))
     })
+    names(per_run_result) <- c(1:length(curr_method_result))
     return(per_run_result)
   })
   names(corrected_methods_results) <-  names(res_methods)
@@ -642,7 +525,9 @@ correct_data_to_make_data_comparable <-  function(data_used) {
   per_run_data <- lapply(c(1:length(data_used)), function(current_run) {
     curr_data <-  data_used[[current_run]]
     true_H <- curr_data$true_H
+    rownames(true_H) <- c(1:dim(true_H)[[1]])
     true_W <- curr_data$true_W
+    colnames(true_W) <- c(1:dim(true_W)[[2]])
     correction_result <- correct_solution_to_normalize_H_and_W(true_W, true_H)
     return (list(true_W=correction_result$new_W,  true_H=correction_result$new_H, V=curr_data$V , D_inv=correction_result$D_inv))})
   return(per_run_data)
@@ -662,9 +547,9 @@ plot_metrics_box <- function(res_methods, data_used, folder_to_save_results, tit
   #' @param data_used true data used for each run. Expected list of num_runs elements which contains. $true_H, $true_W
   #' @param  title just common title base string for each plot. 
   #' @param reference_method reference method name to calculate significance values. 
-  #' @param W_metric  which metric to use for W plots. can be 'rmse', 'cosine' , 'pearson', 'spearman' will be calulated per column
-  #' @param H_metric  which metric to use for H plots. can be 'rmse', 'cosine' , 'pearson', 'spearman' will be calculated per row
-  #' @param V_metric  which metric to use for V plots. can be 'rmse' , 'pearson', 'spearman'  values will be the mean for columns
+  #' @param W_metric  which metric to use for W plots. can be 'rmse', 'cosine' , 'pearson_loss', 'pearson_loss' will be calulated per column
+  #' @param H_metric  which metric to use for H plots. can be 'rmse', 'cosine' , 'pearson_loss', 'pearson_loss' will be calculated per row
+  #' @param V_metric  which metric to use for V plots. can be 'rmse' , 'pearson_loss', 'pearson_loss'  values will be the mean for columns
   corrected_res_methods <- correct_method_matrices_to_make_them_comparable(res_methods)
   corrected_data <-  correct_data_to_make_data_comparable(data_used)
   
@@ -678,7 +563,7 @@ plot_metrics_box <- function(res_methods, data_used, folder_to_save_results, tit
   
   per_metric_titles <- c()
   per_metric_titles["rmse"] <-  expression("RMSE")
-  per_metric_titles["pearson"] <-  expression(1 - pearson^2 )
+  per_metric_titles["pearson_loss"] <-  expression(1 - pearson^2 )
   per_metric_titles["spearman"] <-   expression(1 - spearman^2 )
   
   
@@ -1136,24 +1021,6 @@ plot_single_pictures <- function(W_matrix, picture_title="title", folder_to_save
 
 
 
-
-#### Just left this for history (two metric which are commonly used for NMF) ####
-
-Euclidean.objective_fun <- function(target, w, h, eta, beta){
-  
-  1/2 * ( sum( (target - (w %*% h))^2 ) 
-          # + eta * sum(w^2) 
-          # + beta * sum( colSums( h )^2 )
-  )
-}
-
-KL.objective_fun <- function(y, w, h){
-  
-  a <-  w %*% h
-  return (sum(y * log(y/a) - a + y))
-}
-
-#### End
 
 
 ### Utils

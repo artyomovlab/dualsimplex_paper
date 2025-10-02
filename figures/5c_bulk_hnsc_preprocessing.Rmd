@@ -1,0 +1,413 @@
+---
+title: "Figures 6C: Preprocessing of TCGA-HNSC for DualSimplex"
+output:
+  html_document:
+    df_print: paged
+    self_contained: yes
+---
+
+```{r}
+source("../R/figure_utils.R")
+source("../R/setup.R")
+```
+
+
+
+Some parameters for later
+```{r}
+pt_size <- 0.2
+n_ct_preproc <- 20
+save_dir <- "../out/dualsimplex_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
+```
+
+
+# Load, preprocess and annotate data
+
+## Data
+```{r}
+data_raw <- as.matrix(readRDS("../data/large/HNSC.Rda"))
+# data_raw <- remove_zero_rows(data_raw)
+# data_raw <- linearize_dataset(data_raw)
+# data_raw <- replace_duplicate_genes(data_raw)
+dim(data_raw)
+```
+
+## Anotation
+```{r}
+patient_data <- read.csv(
+  "../data/HNSC/clinical/nationwidechildrens.org_clinical_patient_hnsc.txt",
+  sep = "\t"
+)
+patient_data <- patient_data[3:nrow(patient_data),]
+rownames(patient_data) <- patient_data$bcr_patient_barcode
+
+sample_data <- read.csv(
+  "../data/HNSC/biomedical/nationwidechildrens.org_biospecimen_sample_hnsc.txt",
+  sep = "\t"
+)
+rownames(sample_data) <- sample_data$bcr_sample_barcode
+
+sample_barcodes <- gsub("-\\w+-\\w+-\\w+$", "", colnames(data_raw))
+patient_barcodes <- gsub("-\\w+$", "", sample_barcodes)
+
+sample_data <- sample_data[sample_barcodes, ]
+patient_data <- patient_data[patient_barcodes, ]
+
+sample_data <- cbind(sample_data, patient_data)
+rownames(sample_data) <- colnames(data_raw)
+
+sample_data <- sample_data[, apply(sample_data, 2, function(x) { length(unique(x)) != 1 })]
+sample_data <- sample_data[, grep("(_uuid|_barcode|\\.\\d)$", colnames(sample_data), invert = T)]
+
+sample_types <- sample_data$sample_type
+```
+
+Fetch ribosome and mitochondrion pathways from msigdb for gene annotation
+```{r}
+# H: 50
+# C2CGP: 3358
+# GOCC: 1001, GO: 14765
+msigdbr_df <- rbind(
+  msigdbr::msigdbr(species = "Homo sapiens", category = "C5", subcategory = "GO:CC"),
+  msigdbr::msigdbr(species = "Homo sapiens", category = "C5", subcategory = "GO:BP")
+)
+pathways <- split(x = msigdbr_df$gene_symbol, f = msigdbr_df$gs_name)
+ribosome_pathways <- names(pathways)[grep("GO_.*RIBOSOM.*", names(pathways))]
+mitochondrion_pathways <- names(pathways)[grep("GO_.*MITOCHOND.*", names(pathways))]
+```
+
+```{r}
+gene_anno <- list(
+  HK = read_gene_list("../data/gene_annotation_lists/HK.txt"),
+  CC = read_gene_list("../data/gene_annotation_lists/CC.txt"),
+  CODING = read_gene_list("../data/gene_annotation_lists/CODING_ENSEMBL.txt"),
+  MITO = unique(unlist(pathways[mitochondrion_pathways])),
+  RIBO = unique(unlist(pathways[ribosome_pathways]))
+)
+sample_anno <- list(ST_TUMOR = colnames(data_raw)[sample_types == "Primary Tumor"])
+```
+
+## Collapse similar gene names
+```{r}
+data_raw <- data_raw[unique(rownames(data_raw)),]
+data_raw <- remove_zero_rows(data_raw)
+data_raw <- remove_zero_cols(data_raw)
+
+```
+
+# DualSimplex-based preprocesing
+```{r}
+# Create a new Linseed 2 object. Downstream analysis will happen inside it.
+lo2 <- DualSimplexSolver$new()
+lo2$set_save_dir(save_dir)
+```
+
+```{r}
+# To calculate this step faster, reduce the initial dataset size to 10-20k genes
+# Takes: ~1 min for 55k genes
+lo2$set_data(data_raw, gene_anno, sample_anno, max_sinkhorn_iterations  = 50)
+
+# Saving memory
+rm(data_raw)
+```
+
+
+See below, which annotations are available for genes and samples.
+There are both user-defined and automatic annotations.
+```{r}
+# lo2$get_data() is a conventional ExpressionSet.
+
+# Gene annotations
+head(fData(lo2$get_data()))
+
+# Sample annotations
+head(pData(lo2$get_data()))
+```
+
+
+
+
+## MAD filtering
+First we need to determine the number of cell types for deconvolution.
+It is usually identified by an elbow point on the SVD plot.
+However, the plot below does not have any elbow point.
+That is because most of the 56k genes are not specific to any cell type,
+but introduce some small irrelevant variations.
+We need to filter such genes out to concentrate on what's important.
+```{r}
+lo2$plot_svd()
+```
+
+The first filtering step is to remove lowly varied genes.
+There are quite a lot of them (see the MAD plot below), and just because
+of that they take over the SVD components, although
+they are meaningless in terms of cell types.
+```{r}
+lo2$plot_mad()
+```
+
+
+We can filter them out using the same MAD metric.
+We care only about the right part of the plot, highly variated genes,
+so theoretically, any MAD threshold lower than the right mode on the plot,
+is suitable for MAD filtering. However, we found it practical
+to set a low threshold at this stage, and see when the SVD plot gets better.
+For this dataset, log_mad > 0.1 yields an SVD plot with a decent elbow (see below).
+```{r}
+# Takes: ~35s for 25k genes
+lo2$basic_filter(
+  log_mad_gt = 0.1,  # Note that this is log_mad. It is equivalent to mad < ~1.1
+  remove_true_cols_default = FALSE,  # This function filters some gene categories by default, but for this demo we turn it off
+  genes = T
+)
+lo2$plot_svd()
+lo2$plot_mad()
+```
+
+```{r}
+# Checkpoint
+# We specified save_dir in the very beginning
+# lo2$save_state()
+# lo2 <- DualSimplexSolver$from_state(save_dir, save_there = T)
+```
+
+
+## Add HK neighbours annotation
+We found that housekeeping genes spoil the deconvolution (see the paper),
+so here is an additional step to remove them and similar genes,
+using simplex projection. Housekeeping genes are naturally in the middle
+of the simplex, and cell type specific genes are in the small corners.
+We need only the second ones for deconvolution.
+
+Note: Here we need to make a first projection, to operate inside a simplex
+plane and deal with relations between genes.
+We make the first projection, with a number of cell types, greater than
+indicated by SVD, to not miss out on any relevant variance.
+Judging by the plot above, 20 components is enough to capture everything before the elbow.
+```{r fig.width = 14, fig.height = 6}
+# Takes: ~1m for 25k genes
+lo2$project(n_ct_preproc)
+set.seed(3)
+lo2$run_umap(neighbors_X = 10, neighbors_Omega = 10)
+lo2$plot_projected(color_genes = gene_anno$HK, use_dims = NULL, pt_size = pt_size)  # NULL means default, either 2:3 or UMAP if present
+```
+
+
+Here again we need to find out, how many genes to filter out.
+The cell type specific genes are far from the housekeeping cluster,
+they are in the right part of the plot below, so we can select any threshold,
+which does not remove this right part.
+```{r}
+# You may play around with this threshold
+hk_knnd_threshold <- 0.015
+log_hk_knnd_threshold <- log10(hk_knnd_threshold)
+hk_genes <- gene_anno$HK[gene_anno$HK %in% rownames(lo2$st$proj$X)]
+knns <- FNN::get.knnx(lo2$st$proj$X[hk_genes, ], lo2$st$proj$X, k = 10)
+fData(lo2$st$data)$hk_10_dist <- knns$nn.dist[, ncol(knns$nn.dist)]
+plot(sort(log10(fData(lo2$st$data)$hk_10_dist)))
+abline(h = log_hk_knnd_threshold, col = "red")
+```
+
+Here are the genes, which will be filtered out using the selected threshold.
+```{r fig.width = 14, fig.height = 6}
+filter_out <- rownames(lo2$get_data())[fData(lo2$st$data)$hk_10_dist < hk_knnd_threshold]
+
+# Here we set the HK_neighbours property directly on lo2, to filter them out using basic_filter,
+#  which records a filtering log entry
+fData(lo2$st$data)$HK_neighbours <- rownames(lo2$get_data()) %in% filter_out
+
+lo2$plot_projected(color_genes = filter_out, use_dims = NULL, pt_size = pt_size)
+```
+
+
+```{r}
+# Checkpoint
+# We specified save_dir in the very beginning
+# lo2$save_state()
+# lo2 <- DualSimplexSolver$from_state(save_dir, save_there = T)
+```
+
+
+## Apply gene annotation filters
+Now that we added HK_neighbours annotation, we can filter them out along with some other unwanted genes.
+
+Here are the gene categories to be removed, along with the locations of the corresponding genes on the UMAP.
+```{r fig.width = 14, fig.height = 6}
+remove_categories <- c("RPLS", "LOC", "ORF", "SNOR", "RRNA", "RIBO", "MITO", "HK_neighbours")
+for (cat in remove_categories) {
+  show(lo2$plot_projected(color_genes = cat, use_dims = NULL, pt_size = pt_size))
+}
+```
+
+Additionaly, only coding genes are kept.
+```{r fig.width = 14, fig.height = 6}
+lo2$plot_projected(color_genes = "CODING", use_dims = NULL, pt_size = 0.2)
+```
+
+```{r}
+lo2$basic_filter(
+  log_mad_gt = 0.1,
+  remove_true_cols_default = F,
+  remove_true_cols_additional = remove_categories,
+  keep_true_cols = "CODING",
+  genes = T
+)
+lo2$plot_svd()
+lo2$plot_mad()
+```
+
+
+Here we can see that only the angles (needed for deconvolution) remain,
+while the massive housekeeping middle is removed.
+```{r fig.width = 14, fig.height = 6}
+lo2$project(n_ct_preproc)
+set.seed(4)
+lo2$run_umap(neighbors_X = 10, neighbors_Omega = 10)
+lo2$plot_projected(use_dims = NULL)
+```
+
+
+Here is what has been done so far (the package records filtering functions calls):
+```{r}
+lo2$get_filtering_stats()
+```
+
+```{r}
+# Checkpoint
+# We specified save_dir in the very beginning
+lo2$save_state()
+lo2 <- DualSimplexSolver$from_state(save_dir, save_there = T)
+```
+
+
+## Outlier filtering and finding a good projection
+As you have probably noticed in the UMAP above, there are some genes
+and samples, which are colored red in terms of "zero distance".
+Roughly speaking that means that they are far from the middle of the simplex
+by the simplex plane coordinates, and most probably, they are outliers.
+
+Indeed, below we can see that dim_2 is occupied by some 3 genes and a single sample.
+That's not what we want for deconvolution, because that is oulier variance,
+not cell type variance, taking up our precious SVD components,
+and shifting the simplex plane away from the actual simplex.
+```{r fig.width = 14, fig.height = 6}
+lo2$plot_projected(use_dims = 2:3)
+```
+
+
+To guide the outlier filtering process, we only need to see some first components, not all 20.
+They are all contaminated by outliers.
+```{r fig.width = 14, fig.height = 6}
+# This will be applied to the future projection plots,
+#  unless overridden explicitly with the use_dims parameter
+n_ct_outliers <- 9
+lo2$project(n_ct_outliers)
+all_dims <- list(2:3, 4:5, 6:7, 8:9)
+lo2$set_display_dims(all_dims)
+lo2$plot_projected()
+```
+
+
+Here is the main code cell, showing everything needed to make a good projection.
+High plane distance, contrary to the zero distance, means that the genes are
+far from the detected simplex plane in the general N-dimensional space.
+Such genes would also confuse the algorithm, which operates inside
+the simplex plane, so we saw fit to filter them out too.
+The plots below show:
+- dataset projection onto SVD components 2-9 (R and S vectors, see the paper)
+- zero_distance and plane_distance on projections
+- zero_distance and plane_distance distributions (outliers are usually alone)
+- zero_distance-plane_distance plot
+When a sample is far from zero (from most of the samples), and close
+to the plane, it means that it shifted the plane towards itself significantly.
+You can see this situation in the last plot below.
+```{r fig.width = 14, fig.height = 6}
+lo2$project(n_ct_outliers)
+lo2$plot_projection_diagnostics()
+```
+
+
+There are two single outlier samples, taking up dims 2-3 and others.
+Let's remove them first. They are the farthest ones by zero_distance.
+Note that after filtering we can't plot straight away,
+we need to calculate a new projection, since we changed the data.
+```{r}
+lo2$distance_filter(zero_d_lt = 0.1, genes = F)
+# lo2$plot_projected()  # Would raise an error
+```
+
+Just copy-paste our favorite code cell.
+```{r fig.width = 14, fig.height = 6}
+lo2$project(n_ct_outliers)
+lo2$plot_projection_diagnostics()
+```
+
+There are still distinct outlier genes and samples.
+Most probably, they are related to each other.
+Let's try to filter out genes this time, and see if the outlier samples
+will cease to be outliers in the absence of outlier genes.
+We will remove the 3 genes, which influence dim_3 and other dimensions.
+```{r fig.width = 14, fig.height = 6}
+lo2$distance_filter(zero_d_lt = 0.4, genes = T)
+lo2$project(n_ct_outliers)
+lo2$plot_projection_diagnostics()
+```
+
+
+There are many red points both in samples and in genes.
+In general, we will filter those points which look more alone.
+Eventually, we want the farthest dim_2-dim_3 points to be red by zero_distance,
+and no red in the bulk of the points.
+
+### More iterations
+Usually we do this by running one cell multiple times,
+but for demonstration here we unfolded the whole process.
+```{r fig.width = 14, fig.height = 6}
+lo2$distance_filter(zero_d_lt = 0.2, plane_d_lt = 0.35, genes = T)
+lo2$project(n_ct_outliers)
+lo2$plot_projection_diagnostics()
+```
+
+```{r fig.width = 14, fig.height = 6}
+lo2$distance_filter(plane_d_lt = 0.045, genes = F)
+lo2$project(n_ct_outliers)
+lo2$plot_projection_diagnostics()
+```
+
+
+```{r fig.width = 14, fig.height = 6}
+lo2$distance_filter(plane_d_lt = 0.15, genes = T)
+lo2$project(n_ct_outliers)
+lo2$plot_projection_diagnostics()
+```
+
+
+```{r}
+# Checkpoint
+lo2$save_state()
+lo2 <- DualSimplexSolver$from_state(save_dir, save_there = T)
+```
+
+## Filtering results
+```{r}
+lo2$get_filtering_stats()
+```
+
+```{r}
+lo2$plot_svd_history(c(1, 2, 3, 8))
+```
+
+## Final projection UMAP
+```{r fig.width = 11, fig.height = 5}
+# Choose neighbors parameters to generate the umap with different detail level
+set.seed(4)
+lo2$run_umap(neighbors_X = 10, neighbors_Omega = 10)
+lo2$plot_projected(use_dims = NULL, pt_size = 0.5)
+```
+
+```{r}
+# Checkpoint
+lo2$save_state()
+# lo2 <- DualSimplexSolver$from_state(save_dir, save_there = T)
+```
+

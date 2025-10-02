@@ -1,0 +1,128 @@
+---
+title: "Figures 6D and 6E: Deconvolution of TCGA-HNSC"
+output:
+  html_document:
+    df_print: paged
+    self_contained: yes
+---
+
+```{r}
+source("../R/figure_utils.R")
+source("../R/setup.R")
+```
+
+```{r}
+save_dir <- "../out/dualsimplex_save_tcga_hnscc_4kg_9ct_no_hk_neighbours/"
+options(`dualsimplex-rasterize` = TRUE)
+```
+
+```{r}
+lo2 <- DualSimplexSolver$from_state(save_dir, save_there = T)
+```
+
+```{r fig.width = 14, fig.height = 6}
+lo2$plot_projected(use_dims = NULL)
+```
+
+```{r}
+View(lo2$get_filtering_stats())
+```
+
+
+
+```{r}
+all_dims <- list(NULL, 2:3, 4:5, 6:7, 8:9)
+lo2$set_display_dims(all_dims)
+```
+
+
+## Initialize solution
+```{r fig.width = 14, fig.height = 6}
+set.seed(13)
+lo2$init_solution("select_x")
+lo2$plot_projected(use_dims = NULL, with_legend = T)
+```
+
+<!-- Set convenient order for cell types -->
+```{r fig.width = 14, fig.height = 6}
+reorder <- c(5, 4, 2, 9, 3, 7, 8, 1, 6)
+lo2$st$solution_proj$D_h <- lo2$st$solution_proj$D_h[reorder, , drop = F]
+lo2$st$solution_proj$D_w <- lo2$st$solution_proj$D_w[reorder, , drop = F]
+lo2$st$solution_proj$X <- lo2$st$solution_proj$X[reorder, ]
+lo2$st$solution_proj$Omega <- lo2$st$solution_proj$Omega[reorder, ]
+lo2$plot_projected(use_dims = NULL, with_legend = T)
+```
+
+
+## Optimize solution
+```{r fig.width = 14, fig.height = 6}
+# lo2$default_optimization()
+
+# For select_x to correct Omega
+lo2$optim_solution(650, optim_config(coef_hinge_H = 1, coef_hinge_W = 1, coef_der_X = 0.001, coef_der_Omega = 0.1))
+lo2$plot_projected(use_dims = NULL, with_legend = T, from_iter = 1, to_iter = 650)
+```
+
+
+Run this cell several times until convergence.
+Choosing coef_hinge parameters is the trickiest part.
+```{r}
+lr <- 0.001
+lo2$optim_solution(1000, optim_config(coef_hinge_H = .01, coef_hinge_W = .01, coef_der_X = lr, coef_der_Omega = lr))
+lo2$plot_error_history()
+```
+
+```{r fig.width = 8, fig.height = 4.3}
+plt <- lo2$plot_projected(use_dims = NULL, with_legend = F, with_history = T, pt_size = 0.6)
+ggsave("../out/5c_trajectory.svg", width = 8, height = 4.3, plot = plt, device = svglite::svglite)
+plt
+```
+
+
+### Get final solution in original space
+
+Simple negativity check
+
+
+```{r}
+solution_scaled <- reverse_solution_projection(lo2$st$solution_proj, lo2$st$proj)
+sum(solution_scaled$W_col < 0) / length(solution_scaled$W_col)
+sum(solution_scaled$H_row < 0) / length(solution_scaled$H_row)
+snc <- reverse_solution_sinkhorn(solution_scaled, lo2$st$scaling)
+res <- reverse_sinkhorn_c(solution_scaled$H_row,
+                          solution_scaled$W_col,
+                          lo2$st$scaling$D_vs_row,
+                          lo2$st$scaling$D_vs_col,
+                          lo2$st$scaling$iterations)
+
+lo2$plot_negative_proportions_change()
+lo2$plot_negative_basis_change()
+#plot_matrix_hist_with_negative(solution_scaled$H_row, title = "Proportions distribution", bins = 100)
+#plot_matrix_hist_with_negative(solution_scaled$W_col, title = "Basis distribution", bins = 100)
+
+
+```
+
+```{r}
+solution <- lo2$finalize_solution()
+```
+
+```{r fig.width = 14, fig.height = 6}
+plt <- lo2$plot_projected("markers", use_dims = NULL, with_legend = T, pt_size = 0.9, with_history = F)
+ggsave("../out/5c_markers.svg", width = 14, height = 6, plot = plt, device = svg)
+plt
+```
+
+
+```{r, fig.width=9, fig.height=5}
+plt <- ggplot(reshape2::melt(pmin(t(lo2$get_solution()$H), 1)), aes(x = Var2, y = value, fill = Var2)) +
+  geom_boxplot() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.8, hjust=0.5), axis.title.x = element_blank())
+ggsave("../out/5d_proportions.svg", plt, width = 9, height = 5, device = svg)
+plt
+```
+
+```{r}
+lo2$save_state()
+```

@@ -1,0 +1,655 @@
+
+```{r}
+source('../R/setup.R')
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(svglite)
+dyn.load('/usr/lib/jvm/java-11-openjdk-amd64/lib/server/libjvm.so') # was not able to make rstudio like this
+library(rJava)
+dir_to_save_fig <- "../out/8_without_corners/"
+dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
+```
+
+
+# Generate data without either marker genes or high proportion samples
+
+## Methods for generation
+```{r}
+source("../R/plotting_methods.R")
+get_tuncated_genes_simulation <-  function(M, N, K, noise_deviation) {
+  sim <- create_simulation(n_genes = M,
+                         n_samples = N,
+                         n_cell_types = K,
+                         with_marker_genes = FALSE)
+  sim <- sim %>% add_noise(noise_deviation = noise_deviation)
+  
+  data_raw <- sim$data
+  true_basis <- sim$basis
+  true_proportions <- sim$proportions
+  
+  # Get marker genes
+  marker_genes <- get_signature_markers(true_basis, n_marker_genes = 200)
+  # Get data without marker genes
+  truncated_data <- data_raw[!(rownames(data_raw) %in% unlist(marker_genes)),]
+  return(list(
+    V = data_raw,
+    W = true_basis,
+    H = true_proportions,
+    V_truncated = truncated_data,
+    W_truncated = true_basis[rownames(truncated_data),],
+    H_truncated = true_proportions,
+    marker_genes = marker_genes
+  ))
+}
+
+get_tuncated_genes_and_samples_simulation <-  function(M, N, K, noise_deviation) {
+  sim <- create_simulation(n_genes = M,
+                         n_samples = N,
+                         n_cell_types = K,
+                         with_marker_genes = FALSE)
+  
+  sim <- sim %>% add_noise(noise_deviation = noise_deviation)
+  data_raw <- sim$data
+  true_basis <- sim$basis
+  true_proportions <- sim$proportions
+  # Get marker genes
+  marker_genes <- get_signature_markers(true_basis, n_marker_genes = 200)
+  
+  # Number of truncated proportion components
+  need_to_truncate_h <- floor(K/2)
+  need_to_truncate_w <- K - need_to_truncate_h
+  truncated_data <-  data_raw
+  for (i in 1:need_to_truncate_h) {
+    samples_to_remove <- colnames(true_proportions)[true_proportions[i,] > 0.6]
+    truncated_data <- truncated_data[, ! (colnames(truncated_data) %in% samples_to_remove  )]
+  }
+  for (i in (need_to_truncate_h + 1):K) {
+    genes_to_remove <- marker_genes[[i]]
+    truncated_data <- truncated_data[!(rownames(truncated_data) %in% genes_to_remove), ]
+  }
+  
+  return(list(
+    V = data_raw,
+    W = true_basis[,],
+    H = true_proportions[,],
+    V_truncated = truncated_data,
+    W_truncated = true_basis[rownames(truncated_data),],
+    H_truncated = true_proportions[, colnames(truncated_data)],
+    marker_genes = marker_genes
+  ))
+}
+
+
+
+
+```
+
+
+## Actual generation
+
+```{r}
+set.seed(5)
+
+## Params
+
+N <- 300
+M <- 8000
+K <- 3
+noise_deviation <- 1.5
+number_of_datasets <- 10
+
+## To store matrices
+per_dataset_truncated_data_matrix <- list()
+per_dataset_truncated_proportions <- list()
+per_dataset_truncated_basis <-  list()
+per_dataset_full_data_matrix <- list()
+per_dataset_proportions <- list()
+per_dataset_basis <-  list()
+per_dataset_markers <- list()
+
+
+for (current_dataset in c(1:number_of_datasets)) {
+  simulation <- get_tuncated_genes_and_samples_simulation(M=M, N=N, K=K, noise_deviation=noise_deviation)
+  per_dataset_full_data_matrix[[current_dataset]] <-  simulation$V
+  per_dataset_truncated_data_matrix[[current_dataset]] <-  simulation$V_truncated
+  per_dataset_proportions[[current_dataset]] <-  simulation$H
+  per_dataset_basis[[current_dataset]] <-  simulation$W
+  per_dataset_truncated_proportions[[current_dataset]] <-  simulation$H_truncated
+  per_dataset_truncated_basis[[current_dataset]] <-  simulation$W_truncated
+  per_dataset_markers[[current_dataset]] <-  simulation$marker_genes
+}
+names(per_dataset_full_data_matrix) <-  c(1:number_of_datasets)
+names(per_dataset_truncated_data_matrix) <-  c(1:number_of_datasets)
+names(per_dataset_truncated_proportions) <-  c(1:number_of_datasets)
+names(per_dataset_truncated_basis) <-  c(1:number_of_datasets)
+names(per_dataset_proportions) <-  c(1:number_of_datasets)
+names(per_dataset_basis) <-  c(1:number_of_datasets)
+names(per_dataset_markers) <-  c(1:number_of_datasets)
+
+```
+
+# Visualize datasets
+
+## Dataset with markers
+
+```{r fig.width=5, fig.height=5}
+data_matrix <- per_dataset_full_data_matrix[[1]]
+true_basis <- per_dataset_basis[[1]]
+true_proportions <- per_dataset_proportions[[1]]
+
+
+dso <- DualSimplexSolver$new()
+dso$set_data(per_dataset_full_data_matrix[[1]])
+dso$project(K)
+dso$st$marker_genes <- per_dataset_markers[[1]]
+
+
+# also get coordinates for true solution
+true_solution_coordinates <-  dso$get_coordinates_from_external_matrices(true_basis, true_proportions)
+
+projection_plot <- dso$plot_projected("markers", 
+                                      color_samples = colors_for_samples[4], 
+                                      use_dims = 2:3, wrap = F,  show_plots = F, with_legend = T, 
+                                      pt_opacity=0.8, pt_size=1)
+
+original_plot_X <- projection_plot[[1]] %>% add_points_to_plot(true_solution_coordinates$X,  
+                                                      color_lines =colors_for_genes[7],
+                                                      color_points = colors_for_genes[5], points_label = NULL)
+
+
+
+original_plot_Omega <- projection_plot[[2]] %>% add_points_to_plot(true_solution_coordinates$Omega, 
+                                                          color_lines =colors_for_samples[7],
+                                                          color_points = colors_for_samples[5],points_label = NULL)
+
+original_plot_X_no_legend <- (projection_plot[[1]] + theme(legend.position = "none")) %>% add_points_to_plot(true_solution_coordinates$X,  
+                                                      color_lines =colors_for_genes[7],
+                                                      color_points = colors_for_genes[5], points_label = NULL)
+
+   
+
+
+original_plot_X
+original_plot_Omega
+```
+
+## Dataset without markers
+
+```{r fig.width=5, fig.height=5}
+dso <- DualSimplexSolver$new()
+dso$set_data(per_dataset_truncated_data_matrix[[1]])
+dso$project(K)
+dso$st$marker_genes <- per_dataset_markers[[1]]
+
+# also get coordinates for true solution
+true_solution_coordinates <-  dso$get_coordinates_from_external_matrices(true_basis, true_proportions)
+
+projection_plot <- dso$plot_projected("markers",   
+                                      color_samples = colors_for_samples[4],
+                                      use_dims = 2:3, wrap = F, show_plots = F, with_legend = F,
+                                      pt_opacity=0.8, pt_size=1)
+
+truncated_plot_X <- projection_plot[[1]] %>% add_points_to_plot(true_solution_coordinates$X,  
+                                                      color_lines =colors_for_genes[7],
+                                                      color_points = colors_for_genes[5],  points_label = NULL)
+truncated_plot_Omega <- projection_plot[[2]] %>% add_points_to_plot(true_solution_coordinates$Omega, 
+                                                          color_lines =colors_for_samples[7],
+                                                          color_points = colors_for_samples[5],  points_label = NULL)
+truncated_plot_X
+truncated_plot_Omega
+```
+# Deconvolve truncated matrices with multiple methods
+
+## Select methods to be runed
+
+```{r}
+source("../R/reference_free_methods.R") # all other methods specified here
+methods_to_check <-  c(
+  "DualSimplex", "Linseed",
+  "TOAST",  
+  "CAM3"
+  , "CellDistinguisher"
+  )
+
+```
+
+## Prepare DualSimplex method
+
+```{r}
+
+deconvolve_with_DualSimplex <-  function(mat, K) {
+  data_raw <- as.matrix(mat)
+  dso <- DualSimplexSolver$new()
+  dso$set_data(data_raw)
+  dso$project(K)
+  dso$init_solution("random")
+  dso$default_optimization()
+  solution <- dso$finalize_solution()
+  return(list(object=dso, proportions=solution$H))
+}
+
+```
+
+
+## Run all methods
+```{r fig.show='hide'}
+
+
+
+
+per_run_results <-  list()
+for (current_method in methods_to_check) {
+  print(paste("Method", current_method))
+  per_run_results[[current_method]] <-  list()
+  per_run_results[[current_method]][['object']] <-  list()
+  per_run_results[[current_method]][['proportions']] <-  list()
+  per_run_results[[current_method]][['correlation_plot']] <-  list()
+  per_run_results[[current_method]][['proportions_plot']] <-  list()
+  
+  for (selected_dataset in names(per_dataset_truncated_data_matrix)) {
+    print(paste("Dataset", selected_dataset))
+    filtered_matrix <- per_dataset_truncated_data_matrix[[selected_dataset]]
+    current_true_proportions <- per_dataset_truncated_proportions[[selected_dataset]]
+    current_true_basis <- per_dataset_truncated_basis[[selected_dataset]]
+    K <-  dim(current_true_proportions)[[1]]
+    
+    result_list <- switch(current_method,
+                                    "DualSimplex" = deconvolve_with_DualSimplex(filtered_matrix, K),
+                                    "CAM3" = deconvolve_with_CAM3(filtered_matrix, K),
+                                    "Linseed" = deconvolve_with_Linseed(filtered_matrix, K),
+                                    "TOAST" = deconvolve_with_toast(filtered_matrix, K, nmarker = 4000),
+                                    "CellDistinguisher" = deconvolve_with_CellDistinguisher(filtered_matrix, K))
+    print("writing results")
+    estimated_proportions <- result_list$proportions
+    result_object <- result_list$object
+    # Now fix proportions to match true proportions
+    reordering_result <- reorder_and_plot_correlation(estimated_proportions, current_true_proportions)
+    reordered_proportions <- estimated_proportions[unlist(reordering_result$cell_type_mapping),]
+    # Save some plots for inspection
+    correlation_plot <-  reordering_result$correlation_plot
+    # ptp <- coerce_pred_true_props(reordered_proportions, true_proportions)
+    # proportions_plot <- plot_ptp_scatter(ptp)
+    
+    
+    per_run_results[[current_method]][['object']][[selected_dataset]] <-  result_object
+    per_run_results[[current_method]][['proportions']][[selected_dataset]] <-  reordered_proportions
+    per_run_results[[current_method]][['correlation_plot']][[selected_dataset]] <-  correlation_plot
+    # per_run_results[[current_method]][['proportions_plot']][[selected_dataset]] <-  proportions_plot
+
+    
+  }
+}
+  
+```
+
+
+
+## Save all results
+
+```{r}
+saveRDS(per_run_results,file = "../out/8_without_corners/total_results_mixed.rds")
+
+
+
+```
+
+
+```{r}
+simulated_datasets <- list()
+simulated_datasets$full_data <- per_dataset_full_data_matrix
+simulated_datasets$proportions <- per_dataset_truncated_proportions
+simulated_datasets$full_proportions <- per_dataset_proportions
+
+simulated_datasets$truncated_data <- per_dataset_truncated_data_matrix
+
+simulated_datasets$bassis <- per_dataset_truncated_basis
+simulated_datasets$full_proportions <- per_dataset_basis
+
+simulated_datasets$markers <- per_dataset_markers
+
+saveRDS(simulated_datasets,file = "../out/8_without_corners/simulated_data_mixed.rds")
+
+
+```
+
+
+## Load all results
+
+```{r}
+per_run_results <- readRDS("../out/8_without_corners/total_results_mixed.rds")
+simulated_data <- readRDS("../out/8_without_corners/simulated_data_mixed.rds")
+
+
+```
+
+## Get metric values and plot
+
+
+```{r}
+source("../R/plotting_methods.R")
+methods_to_check <-  c("DualSimplex", "Linseed","TOAST", "CAM3",   "CellDistinguisher")
+comparisons <-  list(c("DualSimplex", "Linseed"), c("DualSimplex", "TOAST"), c("DualSimplex", "CAM3"), c("DualSimplex", "CellDistinguisher"))
+```
+
+
+### RMSE values
+```{r fig.width=5, fig.height=5}
+metric <-  "rmse_loss"
+
+separate_results <-  list()
+for (selected_dataset in names(simulated_data$proportions)) {
+  current_true_proportions <-  simulated_data$proportions[[selected_dataset]]
+  current_dataset_estimated_matrices <- lapply(per_run_results, function(current_result) {current_result$proportions[[selected_dataset]]})
+  names(current_dataset_estimated_matrices) <-  names(per_run_results)
+  current_metric_values <- get_metric_values(current_dataset_estimated_matrices, current_true_proportions, metric = metric, per_row = T, normalize = T)
+  current_metric_values$dataset <-  selected_dataset
+  separate_results[[selected_dataset]] <- current_metric_values
+}
+sorted_by_median_metric <- total_result %>% group_by(method) %>% summarise(median_metric = median(metric_value)) %>% arrange(median_metric)
+method_order <- sorted_by_median_metric$method
+total_result <-  do.call(rbind, separate_results)
+total_result$method <- factor(total_result$method, levels=method_order)
+total_result$cell_type <- as.factor(total_result$cell_type)
+total_result$metric_value <- as.numeric(total_result$metric_value)
+
+
+  
+
+box_plot_rmse <-  plot_single_boxplot(total_result, 
+                                      comparisons =comparisons,
+                                      title = "Distance to original proportion rows", 
+                                      metric_title = get_metric_plot_title(metric), log_scale = T) 
+box_plot_rmse
+```
+
+### Pearson values
+
+```{r fig.width=5, fig.height=5}
+metric <-  "pearson_loss"
+
+separate_results <-  list()
+for (selected_dataset in names(simulated_data$proportions)) {
+  current_true_proportions <-  simulated_data$proportions[[selected_dataset]]
+  current_dataset_estimated_matrices <- lapply(per_run_results, function(current_result) {current_result$proportions[[selected_dataset]]})
+  names(current_dataset_estimated_matrices) <-  names(per_run_results)
+  current_metric_values <- get_metric_values(current_dataset_estimated_matrices, current_true_proportions, metric = metric, per_row = T, normalize = T)
+  current_metric_values$dataset <-  selected_dataset
+  separate_results[[selected_dataset]] <- current_metric_values
+}
+sorted_by_median_metric <- total_result %>% group_by(method) %>% summarise(median_metric = median(metric_value)) %>% arrange(median_metric)
+method_order <- sorted_by_median_metric$method
+total_result <-  do.call(rbind, separate_results)
+total_result$method <- factor(total_result$method, levels=method_order)
+total_result$cell_type <- as.factor(total_result$cell_type)
+total_result$metric_value <- as.numeric(total_result$metric_value)
+
+
+box_plot_pearson <-   plot_single_boxplot(total_result, 
+                                          comparisons =comparisons,
+                                          title = "Distance to original proportion rows", 
+                    metric_title = get_metric_plot_title(metric), log_scale = T) 
+
+box_plot_pearson
+```
+
+
+### Plot all triangles in projected space
+
+
+```{r}
+dso <-  per_run_results$DualSimplex$object[[1]]
+true_proportions <- simulated_data$proportions[[1]]
+true_basis <- simulated_data$bassis[[1]]
+data_raw <- simulated_data$truncated_data[[1]]
+
+# also get coordinates for true solution
+true_solution_coordinates <-  dso$get_coordinates_from_external_matrices(true_basis, true_proportions)
+
+projection_plot <- dso$plot_projected(color_genes = colors_for_genes[4],   
+                                      color_samples = colors_for_samples[4],
+                                      use_dims = 2:3, wrap = F, show_plots = F, with_legend = T, with_history = F, with_solution = F,
+                                      pt_opacity=0.8, pt_size=1)
+
+
+
+
+custom_colors <- brewer.pal(length(methods_to_check),"Set1")
+names(custom_colors) <- methods_to_check
+plot_X <-  projection_plot[[1]]
+plot_Omega <-  projection_plot[[2]]
+
+
+
+for( current_method in names(per_run_results)){
+  solution_H <- per_run_results[[current_method]]$proportions[[1]]
+  
+  res <- DualSimplex::nnls_C__(t(solution_H), t(data_raw))
+  solution_W <- t(res)
+  colnames(solution_W) <-  paste("cell_type", c(1:dim(solution_H)[[1]])) 
+  rownames(solution_W) <-  rownames(data_raw)
+  current_solution_coordinates <-  dso$get_coordinates_from_external_matrices(solution_W, solution_H)
+
+  
+  print(current_method)
+  plot_X = plot_X %>% add_points_to_plot(current_solution_coordinates$X,  
+                                                      color_lines =custom_colors[[current_method]],
+                                                      color_points = custom_colors[[current_method]], 
+                                          line_type = 'solid', points_label = current_method)
+  plot_Omega = plot_Omega %>% add_points_to_plot(current_solution_coordinates$Omega, 
+                                                          color_lines =custom_colors[[current_method]],
+                                                          color_points = custom_colors[[current_method]],line_type = 'solid',
+                                                         points_label = current_method,)
+  
+  
+
+}
+
+   
+
+plot_X <- plot_X %>% add_points_to_plot(true_solution_coordinates$X,  
+                                                      color_lines ='gray',
+                                                      color_points = 'gray')
+plot_Omega <- plot_Omega %>% add_points_to_plot(true_solution_coordinates$Omega, 
+                                                          color_lines ='gray',
+                                                          color_points = 'gray')
+
+
+  #+ scale_color_manual("Line.Color", values=custom_colors,
+                  #    labels=names(custom_colors)) + theme(legend.position = "right")
+multiple_solution_plot_X <- plot_X
+multiple_solution_plot_Omega <- plot_Omega
+
+multiple_solution_plot_X
+multiple_solution_plot_Omega
+```
+
+### Now for each result plot ptp plot
+
+```{r fig.width=15, fig.height= 4, fig.show='hide'}
+per_method_per_dataset_plots <- list()
+
+for (current_method in names(per_run_results)) {
+  per_method_per_dataset_plots[[current_method]] <-  list()
+  current_result <-  per_run_results[[current_method]]
+  for (dataset_name in names(simulated_data$truncated_data)) {
+    current_estimated_proportions <- current_result$proportions[[dataset_name]]
+    current_true_proportions <- simulated_data$proportions[[dataset_name]]
+    
+    
+    current_estimated_proportions <- t(t(current_estimated_proportions)/colSums(current_estimated_proportions))
+     ptp <- coerce_pred_true_props(current_estimated_proportions, current_true_proportions)
+    proportions_plot <- plot_ptp_scatter(ptp)
+    title.grob <- grid::textGrob(paste("Method ", current_method, "dataset", dataset_name), gp=grid::gpar(fontsize=20))
+    proportions_plot <-  gridExtra::grid.arrange(proportions_plot, top = title.grob)
+    per_method_per_dataset_plots[[current_method]][[dataset_name]] <- proportions_plot
+  }
+}
+```
+
+
+
+## Save figures
+
+
+
+```{r}
+
+### original plots
+
+filename <- paste0(dir_to_save_fig, "original_data_X", ".svg")
+ggsave(
+  file = filename,
+  plot = original_plot_X,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "original_data_X_no_legend", ".svg")
+ggsave(
+  file = filename,
+  plot = original_plot_X_no_legend,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+filename <- paste0(dir_to_save_fig, "original_data_Omega", ".svg")
+ggsave(
+  file = filename,
+  plot = original_plot_Omega,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+### Truncated data
+
+filename <- paste0(dir_to_save_fig, "truncated_data_X", ".svg")
+ggsave(
+  file = filename,
+  plot = truncated_plot_X,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+filename <- paste0(dir_to_save_fig, "truncated_data_Omega", ".svg")
+ggsave(
+  file = filename,
+  plot = truncated_plot_Omega,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+### Metrics
+
+result_plot <-
+  ggarrange(
+    box_plot_pearson,
+    box_plot_rmse,
+    nrow = 1,
+    ncol = 2,
+    common.legend = T,
+    legend = 'right',
+    align = "hv"
+  )
+
+filename <- paste0(dir_to_save_fig, "metrics_plot_no_legend", ".svg")
+ggsave(
+  filename,
+  result_plot,
+  width = 7.5,
+  height = 4,
+  device = svglite
+)
+
+
+result_plot <-
+  ggarrange(
+    box_plot_pearson,
+    box_plot_rmse,
+    nrow = 1,
+    ncol = 2,
+    common.legend = T,
+    legend = 'none',
+    align = "hv"
+  )
+
+filename <- paste0(dir_to_save_fig, "metrics_plot", ".svg")
+ggsave(
+  filename,
+  result_plot,
+  width = 7.5,
+  height = 4,
+  device = svglite
+)
+
+
+## multiple solutions
+
+filename <- paste0(dir_to_save_fig, "multiple_solution_X", ".svg")
+ggsave(
+  file = filename,
+  plot = multiple_solution_plot_X,
+  width = 5,
+  height = 3,
+  device = svglite
+)
+
+
+
+filename <- paste0(dir_to_save_fig, "multiple_solution_X_no_legend", ".svg")
+ggsave(
+  file = filename,
+  plot = multiple_solution_plot_X + theme(legend.position ="none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "multiple_solution_Omega", ".svg")
+ggsave(
+  file = filename,
+  plot = multiple_solution_plot_Omega,
+  width = 5,
+  height = 3,
+  device = svglite
+)
+filename <- paste0(dir_to_save_fig, "multiple_solution_Omega_no_legend", ".svg")
+ggsave(
+  file = filename,
+  plot = multiple_solution_plot_Omega + theme(legend.position="none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+
+```
+
+```{r fig.width=20, fig.height=4}
+for (current_method in names(per_method_per_dataset_plots)) {
+  prop_plot <- per_method_per_dataset_plots[[current_method]][[1]]
+  
+  filename <- paste0(dir_to_save_fig, paste0("ptp_",current_method,".svg"))
+  ggsave(file=filename, plot=prop_plot, width=15, height=5, device=svglite)
+  
+}
+
+```
+
+
+
+
+```{r}
+original_plot_X_no_legend
+```
+```{r}
+dso <-  per_run_results$DualSimplex$object[[1]]
+```
+
+```{r}
+dso$plot_projected(use_dims = 2:3)
+```
+
