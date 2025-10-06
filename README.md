@@ -73,7 +73,7 @@ Pathway analysis, signature genes expression heatmap, multple initializations  (
 
 ## Authors
 Contributors names and contact info 
-- Denis Kleverov ([@denis_kleverov](https://twitter.com/denis_kleverov)) ([linkedIn](https://linkedin.com/in/denklewer) )
+- Denis Kleverov ([@denis_kleverov](https://twitter.com/denis_kleverov)) ([linkedIn](https://linkedin.com/in/denklewer) ) ([email] (mailto:denklewer@gmail.com))
 -  Ekaterina Aladyeva ([AladyevaE](https://twitter.com/AladyevaE)) 
 -  Alexey Serdyukov  ([email](mailto:leshaserdyukov@gmail.com))
 -  prof. Maxim Artyomov ([@maxim_artyomov](https://twitter.com/maxim_artyomov)) ([email](mailto:martyomov@wustl.edu))
