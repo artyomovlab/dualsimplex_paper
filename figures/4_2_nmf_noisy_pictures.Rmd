@@ -1,0 +1,475 @@
+---
+title: "Figure 5: NMF, Part 3."
+output: html_notebook
+---
+
+
+```{r}
+dir_to_save_fig <- "../out/4_NMF/"
+dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
+source('../R/setup.R')
+source('../R/nmf_methods.R')
+```
+
+
+# Pictures NMF problem
+
+## Single Run
+### Read pictures (main components)
+```{r}
+set.seed(4)
+size <- 128
+number_of_pictures_to_select <- 4
+
+pictures_W <- rhdf5::h5read("../data/nmf_images/merged_imgs.h5", "matrix")
+pictures_W <- t(pictures_W)[,1:number_of_pictures_to_select]
+current_M <- nrow(pictures_W)
+current_K <- ncol(pictures_W)
+```
+
+
+### Make N mixed pictures with or without noise)
+```{r}
+current_N <- 300
+globally_generated_pic_data <- make_picture_data_random_mixtures(current_M, current_N, current_K, pictures_W, noise_deviation = 0)
+```
+
+
+### Solve this unmixing problem using DualSimplex algorithm
+
+#### Create object
+```{r}
+dso <- DualSimplexSolver$new()
+dso$set_data(globally_generated_pic_data$noizy_V)
+dso$project(current_K)
+dso$run_umap()
+dso$plot_projected()
+```
+
+#### Train model
+We perform `LR_DECAY_STEPS` epochs of training with decreasing learning rate (decrease by `lr_decay`)
+  Each epoch we run `PARAMETERS_INCREASE_STEPS` steps, where we increase `lambda` and `beta` by `params_increase`
+    For each step we do less iterations starting   `RUNS_EACH_STEP` and decreasing this amount by 0.7 each step
+
+```{r}
+dso$init_solution("random")
+
+dso$default_optimization()
+solution <- dso$finalize_solution()
+```
+
+
+```{r}
+dso$plot_projected("plane_distance", "plane_distance", use_dims=list(2:3, 3:4))
+```
+
+
+```{r}
+dso$plot_error_history()
+ggarrange(dso$plot_negative_basis_change(), dso$plot_negative_proportions_change())
+```
+
+
+#### Try to visualize solution
+(This is not mandatory code, just for your visual understanding)
+Here we will plot predicted solution points together with real coordinates in a 3D space of Sinkhorn transformed matrices.
+
+Take solution sinkhorn transformed matrices identified (H_inf and W_inf)
+```{r}
+sol_no_corr <- dso$st$solution_no_corr
+W_solution <- sol_no_corr$Dv_inv_W_row
+W_solution[W_solution< 0] = 0
+H_solution <- sol_no_corr$H_row
+H_solution[H_solution < 0] <- 0
+```
+
+
+Take true solution matrices (Without sinkhorn transformation).
+```{r}
+true_V <- globally_generated_pic_data$V[rownames(W_solution),colnames(H_solution)]
+true_V_noizy <- globally_generated_pic_data$noizy_V[rownames(W_solution),colnames(H_solution)]
+true_W <- globally_generated_pic_data$true_W[rownames(W_solution),]
+true_H <- globally_generated_pic_data$true_H[,colnames(H_solution)]
+```
+
+
+##### Identify coordinates in projected space for true matrices
+Here we will need to perform Sinkhorn transformation for matrix V to restore D_w and D_h matrices. It can take some processing time.
+We will do this for both noisy and original matrices
+```{r}
+
+true_solution_coordinates <-  dso$get_coordinates_from_external_matrices(true_W, true_H)
+X_true <- true_solution_coordinates$X
+Omega_true <-  t(true_solution_coordinates$Omega)
+
+```
+
+
+##### Prepare sets of points to visualize
+```{r}
+library(plotly)
+dims <- dso$st$n_cell_types
+## Prepare set of points 
+
+
+### True corners
+X <- X_true
+Omega <- Omega_true
+X <- X[,1:dims]
+Omega <- Omega[1:dims,]
+colnames(X) <- paste0("R", c(1:dims))
+rownames(Omega) <- paste0("S", c(1:dims))
+
+
+### Solution corners
+X_solution <- dso$st$solution_proj$X
+Omega_solution <- t(dso$st$solution_proj$Omega)
+X_solution <- X_solution[,1:dims]
+Omega_solution <- Omega_solution[1:dims,]
+colnames(X_solution) <- paste0("R", c(1:dims))
+rownames(Omega_solution) <- paste0("S", c(1:dims))
+
+## Just all the points
+### X space
+toPlotX <- as.data.frame(dso$st$proj$X)[,1:dims]
+colnames(toPlotX) <- paste0("R", c(1:dims))
+### Omega space
+toPlotOmega <- as.data.frame(dso$st$proj$Omega)[,1:dims]
+colnames(toPlotOmega) <- paste0("S", c(1:dims))
+```
+
+
+##### Prepare geometrical lines for plotly
+```{r}
+get_line_between_points <- function(X_p, Omega_p) {
+  n <- 2
+  l <- rep(list(1:nrow(X_p)), n)
+  permutations <- expand.grid(l)
+  indices <- c(t(as.matrix(permutations[permutations[,"Var1"] < permutations[, 'Var2'],] )))
+  X_points <- X_p[indices,]
+  Omega_points <- Omega_p[,indices]
+  return(list(X_points=X_points, Omega_points=Omega_points))
+}
+
+
+## Prepare lines to draw between corners true
+line_result <- get_line_between_points(X, Omega)
+X_points <- line_result$X_points
+Omega_points <- line_result$Omega_points
+
+## Prepare lines to draw between corners true
+line_result <- get_line_between_points(X_solution, Omega_solution)
+X_points_solution <- line_result$X_points
+Omega_points_solution <- line_result$Omega_points
+
+# ## Prepare lines to draw between corners corrected
+# line_result <- get_line_between_points(X_corrected, Omega_corrected)
+# X_points_corrected <- line_result$X_points
+# Omega_points_corrected <- line_result$Omega_points
+```
+
+
+```{r}
+t <- list(family = "Helvetica",
+          size = 30)
+
+fig_X <-
+  plot_ly(
+    toPlotX,
+    width = 500,
+    height = 500,
+    type = 'scatter3d',
+    mode = 'markers'
+  ) %>%
+  config(toImageButtonOptions = list(
+    format = "svg",
+    width = 600,
+    height = 600
+  )) %>%
+  # add all dataset points
+  add_trace(
+    x = ~ R2,
+    y = ~ R3,
+    z = ~ R4,
+    size = 1,
+    marker = list(
+      symbol = 'circle',
+      color = "gray",
+      opacity = 0.8,
+      line = list(
+        opacity = 0.4,
+        color = 'black',
+        width = 1
+      )
+    )
+  ) %>%
+  # add  true corner coordinates
+  add_trace(
+    x = X_points[, 'R2'],
+    y = X_points[, 'R3'],
+    z = X_points[, 'R4'],
+    mode = 'markers+lines',
+    line = list(color = 'rgb(44, 160, 44)', width = 5)
+  ) %>%
+  # add solution corner coordinates
+  add_trace(
+    x = X_points_solution[, 'R2'],
+    y = X_points_solution[, 'R3'],
+    z = X_points_solution[, 'R4'],
+    mode = 'markers+lines',
+    line = list(color = 'rgb(0, 44, 160)', width = 5)
+  )
+
+
+fig_X <- fig_X %>% layout(showlegend = FALSE,
+                          scene = list(
+                            xaxis = list(title = 'R2',  titlefont = t),
+                            yaxis = list(title = 'R3', titlefont = t),
+                            zaxis = list(title = 'R4', titlefont = t)
+                          )) %>% config(toImageButtonOptions = list(
+                            format = "svg",
+                            width = 600,
+                            height = 600
+                          ))
+
+fig_X
+```
+
+
+```{r}
+n <- 2
+# l <- rep(list(1:nrow(X)), n)
+# permutations <- expand.grid(l)
+# indices <- c(t(as.matrix(permutations[permutations[,"Var1"] < permutations[, 'Var2'],] )))
+# Omega_points <- Omega[,indices]
+
+
+fig_Omega <-
+  plot_ly(
+    toPlotOmega,
+    width = 500,
+    height = 500,
+    type = 'scatter3d',
+    mode = 'markers'
+  ) %>%
+  config(toImageButtonOptions = list(
+    format = "svg",
+    width = 600,
+    height = 600
+  )) %>%
+  add_trace(
+    x = ~ S2,
+    y = ~ S3,
+    z = ~ S4,
+    size = 3,
+    marker = list(
+      symbol = 'circle',
+      size = 5,
+      color = "gray",
+      line = list(color = 'black', width = 3)
+    )
+  ) %>%
+  add_trace(
+    x = Omega_points['S2', ],
+    y = Omega_points['S3', ],
+    z = Omega_points['S4', ],
+    line = list(color = 'rgb(44, 160, 44)', width = 5),
+    mode = 'markers+lines'
+  )  %>%
+  add_trace(
+    x = Omega_points_solution['S2', ],
+    y = Omega_points_solution['S3', ],
+    z = Omega_points_solution['S4', ],
+    line = list(color = 'rgb(0, 44, 160)', width = 5),
+    mode = 'markers+lines'
+  )
+
+
+fig_Omega <- fig_Omega %>% layout(showlegend = FALSE,
+                                  scene = list(
+                                    xaxis = list(title = 'S2',  titlefont = t),
+                                    yaxis = list(title = 'S3', titlefont = t),
+                                    zaxis = list(title = 'S4', titlefont = t)
+                                  )) %>% config(toImageButtonOptions = list(
+                                    format = "svg",
+                                    width = 600,
+                                    height = 600
+                                  ))
+
+fig_Omega
+```
+
+
+## Multiple Runs
+
+### Define experimentsmethod
+```{r}
+run_experiment_picture_random_noizy <-
+  function(current_K,
+           current_M,
+           current_N,
+           pictures_W,
+           n_data_generations = 3,
+           start_with_hinge_W = 1,
+           start_with_hinge_H = 1,
+           LR_DECAY_STEPS = 7,
+           RUNS_EACH_STEP = 500,
+           PARAMETERS_INCREASE_STEPS = 2,
+           lr_x =  0.1,
+           lr_omega = 0.1,
+           noise_deviation = 3.5,
+           noise_nature = "proportional",
+           n_runs_for_each_model = 10) {
+    data_generated <-
+      lapply(c(1:n_data_generations), function(run_index)
+        make_picture_data_random_mixtures(current_M, current_N, current_K, pictures_W, noise_deviation))
+    
+    total_result <-
+      lapply(c(1:n_data_generations), function(run_index) {
+        print(paste("data gen ", run_index))
+        syntetic_data <- data_generated[[run_index]]
+        current_res_methods <- list()
+        current_res_methods <-
+          NMF::nmf(
+            syntetic_data$noizy_V,
+            current_K,
+            list('lee', 'brunet'),
+            .options = 'vp10',
+            nrun = n_runs_for_each_model
+          )
+        
+        print("Compute NMF method 'HALSacc'")
+        halsacc_res <-
+          NMF::nmf(
+            syntetic_data$noizy_V,
+            current_K,
+            hNMF::HALSacc,
+            nrun = n_runs_for_each_model,
+            .options = 'vp10',
+            name = "HALSacc"
+          )
+        #halsacc_res <- nmf(syntetic_data$V, current_K, halsacc_nmf_algorithm, nrun=10, .options='tp1', name="HALSacc")
+        current_res_methods[["HALSacc"]] <- halsacc_res
+        print("Compute NMF method 'PGNMF'")
+        pgnmf_res <-
+          NMF::nmf(
+            syntetic_data$noizy_V,
+            current_K,
+            hNMF::PGNMF,
+            nrun = n_runs_for_each_model,
+            .options = 'vp10',
+            name = "PGNMF"
+          )
+        # # pgnmf_res <- nmf(syntetic_data$V, current_K, pgnmf_nmf_algorithm, nrun=10, .options='tp1', name="PGNMF")
+        current_res_methods[["PGNMF"]] <- pgnmf_res
+        #print("Compute NMF method 'ALS'")
+        als_nmf_res <-
+          NMF::nmf(
+            syntetic_data$noizy_V,
+            current_K,
+            als_nmf_algorithm,
+            nrun = n_runs_for_each_model,
+            .options = 'p1',
+            name = "ALS"
+          )
+        current_res_methods[["ALS"]] <- als_nmf_res
+        print("Compute NMF method 'DualSimplex'")
+        linseed_res <- NMF::nmf(
+          syntetic_data$noizy_V,
+          current_K,
+          dualsimplex_nmf_algorithm,
+          nrun = n_runs_for_each_model,
+          .options = 'vp10',
+          name = "DualSimplex",
+          start_with_hinge_W = start_with_hinge_W,
+          start_with_hinge_H = start_with_hinge_H,
+          LR_DECAY_STEPS = LR_DECAY_STEPS,
+          RUNS_EACH_STEP = RUNS_EACH_STEP,
+          PARAMETERS_INCREASE_STEPS = PARAMETERS_INCREASE_STEPS,
+          lr_x = lr_x,
+          lr_omega = lr_omega
+        )
+        current_res_methods[["DualSimplex"]] <- linseed_res
+        return(current_res_methods)
+      })
+    
+    
+    all_results_flat <- unlist(total_result, recursive = F)
+    unique_names <- unique(names(all_results_flat))
+    per_method_per_run_result <-
+      lapply(unique_names, function(cur_nm)
+        all_results_flat[names(all_results_flat) == cur_nm])
+    names(per_method_per_run_result) <- unique_names
+    # distances_to_check <- plot_metrics(res_methods = per_method_per_run_result, data_used=data_generated, title=paste("K =", as.character(current_K), "M =", as.character(current_M),"N =",as.character(current_N)))
+    return (list(data_used = data_generated, fit_objects = per_method_per_run_result))
+    
+  }
+```
+
+
+### Run experiment
+
+```{r}
+current_N  <- 100
+# For N = 500 use   start_with_hinge_W=0.1 start_with_hinge_H=0.1
+# For N = 100 use   start_with_hinge_W=10 start_with_hinge_H=1
+noise_nature <- "proportional"
+
+for (noise_deviation in c(0,2)) {
+  result_random <-
+    run_experiment_picture_random_noizy(
+      current_K = current_K,
+      current_M = current_M,
+      current_N = current_N,
+      n_data_generations = 10,
+      n_runs_for_each_model =
+        10,
+      pictures_W = pictures_W ,
+      noise_deviation =
+        noise_deviation,
+      noise_nature = noise_nature,
+      start_with_hinge_W =
+        10,
+      start_with_hinge_H =
+        1,
+      LR_DECAY_STEPS = 11,
+      RUNS_EACH_STEP = 2000,
+      PARAMETERS_INCREASE_STEPS = 3,
+      lr_x =  0.1
+    )
+  
+  print("Save to file")
+  file_name <-
+    paste0(
+      dir_to_save_fig,
+      noise_nature,
+      "_random_noise_",
+      as.character(noise_deviation),
+      '_random_proportions_',
+      current_K ,
+      'K_',
+      current_N,
+      'N_',
+      current_M,
+      'M_random-H_10runs_10init_random.rds'
+    )
+  saveRDS(result_random, file = file_name)
+}
+
+```
+
+
+```{r}
+check_triangles(result_random$fit_objects)
+```
+
+```{r, fig.height = 5, fig.width=20}
+distances_to_check <- plot_metrics_box(res_methods = result_random$fit_objects, 
+                                       data_used=result_random$data_used, 
+                                       title = "test_pictures_result", 
+                                       folder_to_save_results = dir_to_save_fig)
+distances_to_check$plot 
+distances_to_check$W_plot
+distances_to_check$H_plot
+```
+

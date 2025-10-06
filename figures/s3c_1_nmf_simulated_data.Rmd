@@ -36,9 +36,9 @@ source('../R/nmf_methods.R')
 ## Params
 ```{r}
 
-current_M <- 500
+current_M <- 1000
 current_K <- 4
-current_N <- 300
+current_N <- 800
 ```
 
 ## Single run 
@@ -48,7 +48,7 @@ current_N <- 300
 
 ```{r}
 
-globally_generated_data <- make_simulated_data(current_M, current_N, current_K, noise_deviation =15 )
+globally_generated_data <- make_simulated_data(current_M, current_N, current_K, noise_deviation =150 )
 
 start_time <- Sys.time()
 dso <- DualSimplexSolver$new()
@@ -149,6 +149,8 @@ H_solution <- sol_no_corr$H_row
 H_solution[H_solution < 0] <-  0
 ```
 
+
+
 Take true solution matrices (Without sinkhorn transformation).
 
 ```{r}
@@ -162,6 +164,13 @@ true_H <-  globally_generated_data$true_H[,colnames(H_solution)]
 ##### Identify coordinates in projected space for true matrices
 Here we will need to perform Sinkhorn transformation for matrix V to restore D_w and D_h matrices. It can take some processing time.
 We will do this for both noizy and clear matrix
+<!-- true_solution_coordinates <-  dso$get_coordinates_from_external_matrices(true_W, true_H) -->
+<!-- X_true <- true_solution_coordinates$X -->
+<!-- Omega_true <-  t(true_solution_coordinates$Omega) -->
+
+
+
+
 
 ```{r}
 R <-  dso$st$proj$meta$R

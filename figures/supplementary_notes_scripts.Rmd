@@ -1,0 +1,417 @@
+
+
+# Scripts needed to reproduce supplementary notes pictures
+
+
+```{r}
+source('../R/setup.R')
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(svglite)
+library(ggpubr)
+```
+
+## Negative proportions change plot 
+
+```{r}
+## util method to make plot
+
+plot_matrix_hist_with_negative <- function(data_, title="Distribution of values") {
+  
+  toPlot <- as.data.frame(c(data_))
+  colnames(toPlot) <- "value"
+  toPlot$negative <- (toPlot$value < 0)
+  plt <- ggplot(toPlot) + geom_histogram(
+    aes(x=value,fill=negative), stat = "bin", binwidth=0.01, boundary = -0.3) + theme_minimal() + ggtitle(title)
+  return(plt)
+}
+```
+
+
+### Simulated data
+```{r}
+set.seed(3)
+
+K <- 3
+sim <- create_simulation(n_genes = 10000,
+                         n_samples = 100,
+                         n_cell_types = K,
+                         with_marker_genes = FALSE)
+sim <- sim %>% add_noise(noise_deviation = 2.5)
+data_raw <- sim$data
+true_basis <- sim$basis
+true_proportions <- sim$proportions
+```
+
+### Create object
+```{r}
+dso <- DualSimplexSolver$new()
+dso$set_data(data_raw)
+dso$project(K)
+
+dso$plot_svd_history()
+dso$init_solution("random")
+dso$plot_projected("zero_distance", "zero_distance",with_solution=TRUE, use_dims = list(2:3))
+```
+
+
+
+### Optimize and make plots
+```{r}
+set.seed(23)
+dso$init_solution("random")
+iterations <-  5000
+dso$optim_solution(iterations,  optim_config(coef_hinge_H = 1,
+                                            coef_hinge_W = 10,
+                                            coef_der_X = 0.001, 
+                                            coef_der_Omega = 0.001
+                                            ))
+
+dso$finalize_solution()
+dso$plot_projected("zero_distance", "zero_distance",with_solution=TRUE, use_dims = list(2:3))
+plot_errors(dso$st$solution_proj, variables = c("deconv_error",
+                                 "lamdba_error",
+                                 "beta_error",
+                                 "total_error")) +geom_line(size=1)
+```
+### Prepare picture
+
+```{r fig.width=10, fig.height=5}
+
+plt_neg_prop <- dso$plot_negative_proportions_change()
+plt_neg_basis <- dso$plot_negative_basis_change()
+
+plt_hinge_prop_change <- plot_errors(dso$st$solution_proj, variables = c("lamdba_error")) +
+  geom_line(size=1) + 
+  ggtitle("Hinge values for proportions")
+plt_hinge_basis_change <- plot_errors(dso$st$solution_proj, variables = c("beta_error")) +
+  geom_line(size=1)
+
+prop_hist <-  plot_matrix_hist_with_negative(dso$st$solution_no_corr$H, "Distribution of proportion values")
+
+row1 <-  ggarrange(plt_hinge_prop_change, plt_neg_prop, nrow=1)
+total <-  ggarrange(row1, prop_hist, nrow=2)
+total
+```
+
+## Choice of coefficients for GSE19830
+
+### Data 
+```{r}
+set.seed(5)
+
+library('GEOquery')
+K <- 3
+
+## Get the data
+dataset <- "GSE19830"
+gse <- getGEO(dataset, AnnotGPL = T)
+gse <- gse[[1]]
+data_gse19830 <- Biobase::exprs(gse)
+#linearize the data!
+data_gse19830 <- linearize_dataset(data_gse19830)
+
+## Map probes
+
+library(biomaRt)
+
+library(matrixStats)
+# probes which are present in data
+probe_mapping <- biomaRt::select(rat2302.db::rat2302.db, rownames(data_gse19830), c("SYMBOL"))
+probe_mapping <- probe_mapping[probe_mapping$PROBEID %in% rownames(data_gse19830), ]
+# not empty result gene id (now we  many-to-many in in genes to probes)
+probe_mapping <- probe_mapping[!is.na(probe_mapping$SYMBOL), ]
+# This dataset is strange, 1 probe could be many genes, which is not correct (but you can try without this)
+probe_mapping <- probe_mapping[!duplicated(probe_mapping$PROBEID), ]
+## want to collapse gene for each gene and take mean value of data
+data_gse19830 <-  data_gse19830[probe_mapping$PROBEID,]
+rownames(data_gse19830) <- probe_mapping$SYMBOL
+# should be unique gene name as row name after this
+
+
+data_gse19830 <-  tapply(data_gse19830, list(row.names(data_gse19830)[row(data_gse19830)], colnames(data_gse19830)[col(data_gse19830)]), FUN = median)
+  
+coding_info <- biomaRt::select(rat2302.db::rat2302.db, rownames(data_gse19830),keytype="SYMBOL", c("SYMBOL", "GENETYPE"))
+# possible values for genetype "protein-coding" "ncRNA""pseudo""other" "unknown" 
+MOUSE_PROTEIN_CODING_GENES <-  coding_info[coding_info$GENETYPE == 'protein-coding', 'SYMBOL']
+length(PROTEIN_CODING_GENES)
+
+print(paste("Dim for the whole data:", toString(dim(data_gse19830))))
+print(paste("Dim for hidden proportions (H):", toString(dim(true_proportions))))
+print(paste("Dim for hidden basis (W):", toString(dim(true_basis))))
+```
+
+### Create the object
+
+```{r fig.height = 5, fig.width = 11}
+dso <- DualSimplexSolver$new()
+dso$set_data(data_gse19830, gene_anno_lists = list(CODING = MOUSE_PROTEIN_CODING_GENES))
+dso$basic_filter( keep_true_cols = c("CODING"), remove_true_cols_default = c())
+dso$project(K)
+
+dso$basic_filter(log_mad_gt = 1)
+dso$project(K)
+dso$distance_filter(plane_d_lt = 0.015, zero_d_lt = NULL, genes = T)
+dso$project(K)
+
+dso$plot_projected("zero_distance", "zero_distance", use_dims = list(2:3))
+```
+### Solve deconvolution
+
+```{r fig.height = 5, fig.width = 11}
+iterations = 1500
+lambda_term = 0
+beta_term = 0
+lr_x = 0.01
+lr_omega = 0.01
+
+dso$init_solution("random")
+#dso$default_optimization() you always can try this method instead of tuning parameters yourself
+dso$optim_solution(iterations, 
+                   optim_config(coef_hinge_H = lambda_term,
+                                coef_hinge_W =beta_term,
+                                coef_der_X = lr_x, 
+                                coef_der_Omega = lr_omega
+                                ))
+dso$plot_projected("zero_distance", "zero_distance", use_dims = list(2:3))
+
+```
+### Prepare plot
+
+```{r}
+# Define where deconvolution term and hinge term intersected
+st <- dso$st$solution_proj$optim_history$errors_statistics
+step <- c(1:dim(st)[1])
+st <- cbind( step, st)
+
+error_plot <-  plot_errors(dso$st$solution_proj, variables = c("deconv_error", "lamdba_error", "beta_error"))  +
+  geom_line(size=1) + ggtitle("Errors") 
+
+
+if (sum(st[,'deconv_error'] < st[,  'lamdba_error'])) {
+  intersect_row <- st[st[,'deconv_error'] < st[,  'lamdba_error'],][1,]
+  intersect_x <- intersect_row['step']
+  intersect_y <- log10(intersect_row['lamdba_error'])
+
+  pos_arrow_start_x <- intersect_x + 200
+  pos_arrow_start_y <- intersect_y + 1
+  pos_text_x <- pos_arrow_start_x + 100
+  pos_text_y <- pos_arrow_start_y + 0.2
+  error_plot <-  error_plot +
+    annotate("text", x=pos_text_x, y=pos_text_y, label="Meeting point",colour="black",  hjust = 'left') + 
+    geom_segment(aes(x = pos_arrow_start_x, 
+                     y = pos_arrow_start_y, 
+                     xend = intersect_x, 
+                     yend = intersect_y),  
+                 linetype=1, size=1, color = 'dodgerblue4', arrow=arrow(length=unit(0.30,"cm"),type='closed'))
+}
+
+  
+```
+
+
+```{r fig.height = 7, fig.width=12}
+
+neg_basis_plot <- dso$plot_negative_basis_change()
+neg_proportions_plot <- dso$plot_negative_proportions_change()
+points_plot <- dso$plot_projected(use_dims=2:3, show_plots = F)
+ggarrange(points_plot, error_plot, neg_basis_plot, neg_proportions_plot)
+```
+## Choice of coefficients for GSE11058
+
+### Data 
+```{r}
+set.seed(5)
+
+library('GEOquery')
+K <- 4
+
+## Get the data
+dataset <- "GSE11058"
+gse <- getGEO(dataset, AnnotGPL = T)
+gse <- gse[[1]]
+data_raw <- Biobase::exprs(gse)
+#linearize the data!
+data_raw <- linearize_dataset(data_raw)
+
+## Map probes
+
+library(biomaRt)
+
+library(matrixStats)
+# probes which are present in data
+probe_mapping <- biomaRt::select(hgu133plus2.db::hgu133plus2.db, rownames(data_raw), c("SYMBOL"),   keytype = "PROBEID")
+probe_mapping <- probe_mapping[probe_mapping$PROBEID %in% rownames(data_raw), ]
+# not empty result gene id (now we  many-to-many in in genes to probes)
+probe_mapping <- probe_mapping[!is.na(probe_mapping$SYMBOL), ]
+## want to collapse gene for each gene and take mean value of data
+data_raw <-  data_raw[probe_mapping$PROBEID,]
+rownames(data_raw) <- probe_mapping$SYMBOL
+# should be unique gene name as row name after this
+data_raw <-  tapply(data_raw, list(row.names(data_raw)[row(data_raw)], colnames(data_raw)[col(data_raw)]), FUN = median)
+
+coding_info <- biomaRt::select(hgu133plus2.db::hgu133plus2.db, rownames(data_raw),keytype="SYMBOL", c("SYMBOL", "GENETYPE"))
+# possible values for genetype "protein-coding" "ncRNA""pseudo""other" "unknown" 
+PROTEIN_CODING_GENES <-  coding_info[coding_info$GENETYPE == 'protein-coding', 'SYMBOL']
+length(PROTEIN_CODING_GENES)
+
+print(paste("Dim for the whole data:", toString(dim(data_raw))))
+print(paste("Dim for hidden proportions (H):", toString(dim(true_proportions))))
+print(paste("Dim for hidden basis (W):", toString(dim(true_basis))))
+```
+
+### Create the object
+
+```{r fig.height = 5, fig.width = 11}
+dso <- DualSimplexSolver$new()
+dso$set_data(data_raw, gene_anno_lists = list(CODING = PROTEIN_CODING_GENES))
+dso$basic_filter( keep_true_cols = c("CODING"), remove_true_cols_default = c())
+dso$project(K)
+
+dso$basic_filter(log_mad_gt = 2.5)
+dso$project(K)
+dso$distance_filter(plane_d_lt = 0.19, zero_d_lt = 0.3, genes = T)
+dso$project(K)
+dso$run_umap(neighbors_X = 25, neighbors_Omega = 5)
+
+dso$plot_projected("zero_distance", "zero_distance", use_dims = list(2:3))
+dso$plot_projected("zero_distance", "zero_distance", use_dims = NULL)
+
+```
+### Solve deconvolution
+
+```{r fig.height = 5, fig.width = 11}
+iterations = 15000
+lambda_term = 1
+beta_term = 1
+lr_x = 0.001
+lr_omega = 0.001
+
+dso$init_solution("random")
+dso$optim_solution(iterations, 
+                   optim_config(coef_hinge_H = lambda_term,
+                                coef_hinge_W =beta_term,
+                                coef_der_X = lr_x, 
+                                coef_der_Omega = lr_omega
+                                ))
+dso$plot_projected("zero_distance", "zero_distance", use_dims = NULL)
+
+```
+### Prepare plot
+
+```{r}
+# Define where deconvolution term and hinge term intersected
+st <- dso$st$solution_proj$optim_history$errors_statistics
+step <- c(1:dim(st)[1])
+st <- cbind( step, st)
+
+error_plot <-  plot_errors(dso$st$solution_proj, variables = c("deconv_error", "lamdba_error", "beta_error"))  +
+  geom_line(size=1) + ggtitle("Errors") 
+
+
+if (sum(st[,'deconv_error'] < st[,  'lamdba_error'])) {
+  intersect_row <- st[st[,'deconv_error'] < st[,  'lamdba_error'],][1,]
+  intersect_x <- intersect_row['step']
+  intersect_y <- log10(intersect_row['lamdba_error'])
+
+  pos_arrow_start_x <- intersect_x + 200
+  pos_arrow_start_y <- intersect_y + 1
+  pos_text_x <- pos_arrow_start_x + 100
+  pos_text_y <- pos_arrow_start_y + 0.2
+  error_plot <-  error_plot +
+    annotate("text", x=pos_text_x, y=pos_text_y, label="Meeting point",colour="black",  hjust = 'left') + 
+    geom_segment(aes(x = pos_arrow_start_x, 
+                     y = pos_arrow_start_y, 
+                     xend = intersect_x, 
+                     yend = intersect_y),  
+                 linetype=1, size=1, color = 'dodgerblue4', arrow=arrow(length=unit(0.30,"cm"),type='closed'))
+}
+
+  
+```
+
+
+```{r fig.height = 7, fig.width=12}
+
+neg_basis_plot <- dso$plot_negative_basis_change()
+neg_proportions_plot <- dso$plot_negative_proportions_change()
+points_plot <- dso$plot_projected(use_dims=NULL, show_plots = F)
+ggarrange(points_plot, error_plot, neg_basis_plot, neg_proportions_plot)
+```
+
+## Initialization strategies
+
+### Select X on 19830
+
+```{r fig.height = 10, fig.width = 11}
+dso <- DualSimplexSolver$new()
+K <- 3
+dso$set_data(data_gse19830, gene_anno_lists = list(CODING = MOUSE_PROTEIN_CODING_GENES))
+dso$basic_filter( keep_true_cols = c("CODING"), remove_true_cols_default = c())
+
+dso$basic_filter(remove_true_cols_default = c())
+dso$project(K)
+
+dso$basic_filter(log_mad_gt = 1)
+dso$project(K)
+dso$distance_filter(plane_d_lt = 0.015, zero_d_lt = NULL, genes = T)
+dso$project(K)
+
+
+
+
+## Use Omega points to initialize solution
+dso$init_solution("select_omega")
+plt_omega_init <- dso$plot_projected("black", "black", use_dims = list(2:3), show_plots = F) 
+
+## Use X points to initialize solution
+dso$init_solution("select_x")
+plt_x_init <-  dso$plot_projected("black", "black", use_dims = list(2:3), show_plots = F) 
+
+
+ggarrange(plotlist =(c(plt_x_init, plt_omega_init)), nrow = 2, labels=c("Single side select X init", "Single side select Omega init"), label.x=0.6)
+```
+### Solve deconvolution
+
+```{r fig.height = 5, fig.width = 11}
+iterations = 1500
+lambda_term = 1
+beta_term = 1
+lr_x = 0.01
+lr_omega = 0.01
+
+dso$optim_solution(iterations, 
+                   optim_config(coef_hinge_H = lambda_term,
+                                coef_hinge_W =beta_term,
+                                coef_der_X = lr_x, 
+                                coef_der_Omega = lr_omega
+                                ))
+dso$plot_projected("zero_distance", "zero_distance", use_dims = list(2:3))
+
+```
+### Prepare plot
+
+```{r}
+# Define where deconvolution term and hinge term intersected
+st <- dso$st$solution_proj$optim_history$errors_statistics
+step <- c(1:dim(st)[1])
+st <- cbind( step, st)
+
+error_plot <-  plot_errors(dso$st$solution_proj, variables = c("deconv_error", "lamdba_error", "beta_error"))  +geom_line(size=1) + ggtitle("Errors") 
+
+
+
+  
+```
+
+
+```{r fig.height = 7, fig.width=12}
+
+neg_basis_plot <- dso$plot_negative_basis_change()
+neg_proportions_plot <- dso$plot_negative_proportions_change()
+points_plot <- dso$plot_projected(use_dims=2:3, show_plots = F)
+ggarrange(points_plot, error_plot, neg_basis_plot, neg_proportions_plot)
+```
+
+

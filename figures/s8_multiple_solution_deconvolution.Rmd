@@ -1,0 +1,866 @@
+
+```{r}
+source('../R/setup.R')
+source("../R/plotting_methods.R")
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(svglite)
+library(Biobase)
+
+dir_to_save_fig <- "../out/10_multiple_solution/"
+dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
+```
+
+## Prepare DualSimplex method
+
+```{r}
+deconvolve_with_DualSimplex <-  function(mat, K) {
+  data_raw <- as.matrix(mat)
+  dso <- DualSimplexSolver$new()
+  dso$set_data(data_raw)
+  dso$project(K)
+  dso$init_solution("random")
+  dso$default_optimization( )
+  solution <- dso$finalize_solution()
+  W <- dso$st$solution_no_corr$Dv_inv_W_row
+  H <- dso$st$solution_no_corr$H_row
+
+  return(list(object=dso, proportions=H, basis = W))
+}
+
+
+```
+
+
+# Non-unique NMF cases
+
+## Methods for data generation
+
+Here we illustrate two cases when NMF has multiple solutions for  W and H matrices
+
+
+```{r}
+# First example simply generate 6 points according to 
+# https://onlinelibrary.wiley.com/doi/10.1155/2008/764206
+# W and H are in essence the same matrix by there are more than 1 possible solutions enclosing the points
+get_trivial_example <-  function(alpha) {
+  H <-  matrix(
+    c(alpha, 1, 1, alpha, 0, 0,
+      1,     alpha, 0,0, alpha, 1,
+      0, 0, alpha, 1, 1, alpha), nrow = 3, byrow = T
+  )
+  
+  rownames(H) <-  paste0("cell_type_", 1:dim(H)[[1]])
+  colnames(H) <-  paste0("sample_", 1:dim(H)[[2]])
+  W <- t(H)
+  colnames(W) <-  paste0("cell_type_", 1:dim(W)[[2]])
+  rownames(W) <-  paste0("feature_", 1:dim(W)[[1]])
+  return(list(
+    V = W %*% H,
+    W = W,
+    H = H
+  ))
+}
+
+# Second example generate  W and H uniformly from a 3 dimensional sphere
+# Having all the values packed around some points will give us unlimited amount of possible solutions
+rsphere <- function(n, r = 1.0, surface_only = FALSE) {
+    phi       <- runif(n, 0.0, 2.0 * pi)
+    cos_theta <- runif(n, -1.0, 1.0)
+    sin_theta <- sqrt((1.0-cos_theta)*(1.0+cos_theta))
+    radius <- r
+    if (surface_only == FALSE) {
+        radius <- r * runif(n, 0.0, 1.0)^(1.0/3.0)
+    }
+
+    x <- radius * sin_theta * cos(phi)
+    y <- radius * sin_theta * sin(phi)
+    z <- radius * cos_theta
+
+    cbind(x, y, z)
+}
+
+get_nonunique_nmf_sphere <-  function(M, N) {
+  H <-  t(rsphere(M)) + 1
+  W <-  rsphere(N) + 1
+  
+  rownames(H) <-  paste0("cell_type_", 1:dim(H)[[1]])
+  colnames(H) <-  paste0("sample_", 1:dim(H)[[2]])
+  # W <- t(H)
+  colnames(W) <-  paste0("cell_type_", 1:dim(W)[[2]])
+  rownames(W) <-  paste0("feature_", 1:dim(W)[[1]])
+  return(list(
+    V = W %*% H,
+    W = W,
+    H = H,
+     V_truncated = W %*% H,
+    W_truncated = W,
+    H_truncated = H
+  ))
+  
+  
+}
+
+get_alternative_solution <-  function(W, H) {
+  simmetric_orthonormal_matrix <-  matrix(
+    c(-1, 2, 2, 
+      2, -1, 2, 
+      2, 2, -1), nrow = 3, byrow = T
+  ) / 3
+  return(list(
+    W=W %*% simmetric_orthonormal_matrix,
+    H= simmetric_orthonormal_matrix %*% H
+  ))
+  
+}
+
+
+get_rotation_of_solution <-  function(X, Omega, theta= 10) {
+  rotation_matrix <-  matrix(c(cos(theta), -sin(theta), sin(theta), cos(theta) ), nrow = 2 )
+  X[, 2:3] <- X[, 2:3] %*% rotation_matrix
+  Omega[, 2:3] <- Omega[, 2:3] %*% rotation_matrix
+  
+  return(list(X=X, Omega=Omega))
+}
+
+```
+
+
+## First scenario
+
+```{r fig.width=5, fig.height=5}
+K <- 3
+sim <- get_trivial_example(0.5)
+data_matrix <- sim$V
+true_basis <- sim$W
+true_proportions <- sim$H
+
+dso <- DualSimplexSolver$new()
+dso$set_data(data_matrix)
+dso$project(K)
+
+# also get coordinates for true solution
+true_solution_coordinates <-  dso$get_coordinates_from_external_matrices(true_basis, true_proportions)
+alternative_solution <-  get_alternative_solution(true_basis, true_proportions)
+alternative_solution_coordinates <-  dso$get_coordinates_from_external_matrices(alternative_solution$W, alternative_solution$H)
+
+
+
+projection_plot <- dso$plot_projected(color_genes  = "red", 
+                                      color_samples = "red", 
+                                      use_dims = 2:3, wrap = F,  show_plots = F, with_legend = T, 
+                                      pt_opacity=0.8, pt_size=2)
+
+trivial_plot_X <- projection_plot[[1]] %>% add_points_to_plot(true_solution_coordinates$X,  
+                                                      color_lines =colors_for_genes[7],
+                                                      color_points = colors_for_genes[5], points_label = "true solution")
+
+
+
+trivial_plot_Omega <- projection_plot[[2]] %>% add_points_to_plot(true_solution_coordinates$Omega, 
+                                                          color_lines =colors_for_samples[7],
+                                                          color_points = colors_for_samples[5],points_label = "true solution")
+
+
+
+
+trivial_plot_X <-  trivial_plot_X %>% add_points_to_plot(alternative_solution_coordinates$X, color_lines = "green", color_points = "green", points_label="alternative solution")
+trivial_plot_Omega <-  trivial_plot_Omega %>% add_points_to_plot(alternative_solution_coordinates$Omega, color_lines = "green", color_points = "green", points_label="alternative solution")
+
+
+trivial_plot_X_no_legend <-  trivial_plot_X   + theme(legend.position = "none")
+trivial_plot_Omega_no_legend <-  trivial_plot_Omega + theme(legend.position = "none")
+
+
+trivial_plot_X
+trivial_plot_Omega
+```
+
+## Plot alternative solutions
+
+```{r}
+current_solution <- true_solution_coordinates
+final_solutions <- list()
+
+
+for (theta_step in c(1:5)) {
+  rotated_solution <-  get_rotation_of_solution(current_solution$X, current_solution$Omega, theta = (theta_step+1))
+  
+  target_solution <- set_solution_from_x(X=rotated_solution$X, proj= dso$st$proj)
+
+  W_estimate <- t(dso$st$proj$meta$S) %*% t(target_solution$Omega)
+  trivial_plot_X_with_rotations <-  trivial_plot_X
+  if (sum(W_estimate < 0) > 1) {
+    print("solution for W was negative")
+    trivial_plot_X_with_rotations <-  trivial_plot_X_with_rotations %>% add_points_to_plot(target_solution$X, color_lines = "pink", 
+                                                           color_points = "pink", 
+                                                           points_label="incorrect solution",
+                                                           with_points = T
+                                                           )
+  } else {
+    print("solution for W was OK")
+    trivial_plot_X_with_rotations <-  trivial_plot_X_with_rotations %>% add_points_to_plot(target_solution$X, color_lines = "green", 
+                                                           color_points = "green", 
+                                                           points_label="possible solution",
+                                                           with_points = T
+                                                           )
+    
+  }
+
+  H_estimate <- target_solution$X %*% dso$st$proj$meta$R
+  trivial_plot_Omega_with_rotations <- trivial_plot_Omega
+  if (sum(H_estimate < 0) > 1) {
+    print("solution_was negative")
+        
+  trivial_plot_Omega_with_rotations <-  trivial_plot_Omega_with_rotations %>% add_points_to_plot(target_solution$Omega, color_lines = "pink", color_points = "pink",
+                                                         with_points = T, points_label="incorrect solution")
+  }
+  else {
+    print("solution was OK")
+      trivial_plot_Omega_with_rotations <-  trivial_plot_Omega_with_rotations %>% add_points_to_plot(target_solution$Omega, color_lines = "green", color_points = "green",
+                                                         with_points = T, points_label="possible solution")
+  }
+  dso$st$solution_proj <- target_solution
+    
+
+  
+  solution <- dso$finalize_solution()
+  W <- dso$st$solution_no_corr$Dv_inv_W_row
+  H <- dso$st$solution_no_corr$H_row
+  print(all.equal(data_matrix, W %*% H))
+
+  final_solutions[[theta_step]] <- list(W=W, H=H)
+
+
+}
+
+trivial_plot_X_with_rotations
+trivial_plot_Omega_with_rotations
+```
+## Solve with deconvolution
+
+### Actual generation
+
+```{r}
+set.seed(5)
+
+## Params
+
+number_of_datasets <- 1
+number_of_solutions <-  4
+
+## To store matrices
+per_dataset_proportions <- list()
+per_dataset_basis <-  list()
+per_dataset_matrix <- list()
+
+
+for (current_dataset in c(1:number_of_datasets)) {
+  simulation <-  get_trivial_example(0.5)
+  per_dataset_matrix[[current_dataset]] <-  simulation$V
+  per_dataset_proportions[[current_dataset]] <-  simulation$H
+  per_dataset_basis[[current_dataset]] <-  simulation$W
+}
+names(per_dataset_matrix) <-  c(1:number_of_datasets)
+names(per_dataset_proportions) <-  c(1:number_of_datasets)
+names(per_dataset_basis) <-  c(1:number_of_datasets)
+
+```
+
+
+### Run multiple optimizations
+```{r fig.show='hide'}
+per_run_results <-  list()
+for (current_run in 1:number_of_solutions) {
+  current_method <- paste0("DualSimplex_", current_run)
+  print(paste("Method", current_method))
+  per_run_results[[current_method]] <-  list()
+  per_run_results[[current_method]][['object']] <-  list()
+  per_run_results[[current_method]][['proportions']] <-  list()
+  set.seed(current_run * 4)
+  for (selected_dataset in names(per_dataset_matrix)) {
+    print(paste("Dataset", selected_dataset))
+    mat <- per_dataset_matrix[[selected_dataset]]
+    current_true_proportions <- per_dataset_proportions[[selected_dataset]]
+    current_true_basis <- per_dataset_basis[[selected_dataset]]
+    K <-  dim(current_true_proportions)[[1]]
+
+    result_list <- deconvolve_with_DualSimplex(mat, K)
+    print("writing results")
+    estimated_proportions <- result_list$proportions
+    result_object <- result_list$object
+    per_run_results[[current_method]][['object']][[selected_dataset]] <-  result_object
+    per_run_results[[current_method]][['proportions']][[selected_dataset]] <-  result_list$proportions
+    per_run_results[[current_method]][['basis']][[selected_dataset]] <-  result_list$basis[,rownames(result_list$proportions)]
+  }
+}
+  
+```
+
+### Plot all triangles in projected space
+
+```{r}
+methods_to_check <- names(per_run_results)
+custom_colors <-  unname(Polychrome::palette36.colors(length(methods_to_check)))
+names(custom_colors) <- methods_to_check
+```
+
+```{r}
+dso <-  per_run_results$DualSimplex_1$object[[1]]
+true_proportions <- per_dataset_proportions[[1]]
+true_basis <- per_dataset_basis[[1]]
+data_raw <- per_dataset_matrix[[1]]
+
+# also get coordinates for true solution
+true_solution_coordinates <-  dso$get_coordinates_from_external_matrices(true_basis, true_proportions)
+
+projection_plot <- dso$plot_projected(color_genes = colors_for_genes[4],   
+                                      color_samples = colors_for_samples[4],
+                                      use_dims = 2:3, wrap = F, show_plots = F, with_legend = T, with_history = F, with_solution = F,
+                                      pt_opacity=0.8, pt_size=1)
+
+
+
+plot_X <-  projection_plot[[1]]
+plot_Omega <-  projection_plot[[2]]
+
+for( current_method in names(per_run_results)){
+  solution_H <- per_run_results[[current_method]]$proportions[[1]]
+  res <- DualSimplex::nnls_C__(t(solution_H), t(data_raw))
+  solution_W <- t(res)
+  colnames(solution_W) <-  paste("cell_type", c(1:dim(solution_H)[[1]])) 
+  rownames(solution_W) <-  rownames(data_raw)
+  current_solution_coordinates <-  dso$get_coordinates_from_external_matrices(solution_W, solution_H)
+
+  print(current_method)
+  plot_X = plot_X %>% add_points_to_plot(current_solution_coordinates$X,  
+                                                      color_lines =custom_colors[[current_method]],
+                                                      color_points = custom_colors[[current_method]], 
+                                          line_type = 'solid', points_label = current_method)
+  plot_Omega = plot_Omega %>% add_points_to_plot(current_solution_coordinates$Omega, 
+                                                          color_lines =custom_colors[[current_method]],
+                                                          color_points = custom_colors[[current_method]],line_type = 'solid',
+                                                         points_label = current_method,)
+  
+  
+
+}
+
+   
+
+plot_X <- plot_X %>% add_points_to_plot(true_solution_coordinates$X,  
+                                                      color_lines ='gray',
+                                                      color_points = 'gray')
+plot_Omega <- plot_Omega %>% add_points_to_plot(true_solution_coordinates$Omega, 
+                                                          color_lines ='gray',
+                                                          color_points = 'gray')
+
+
+  #+ scale_color_manual("Line.Color", values=custom_colors,
+                  #    labels=names(custom_colors)) + theme(legend.position = "right")
+trivial_multiple_solution_plot_X <- plot_X
+trivial_multiple_solution_plot_Omega <- plot_Omega
+
+trivial_multiple_solution_plot_X
+trivial_multiple_solution_plot_Omega
+```
+
+# Second scenario
+
+## Dataset with markers
+
+```{r fig.width=5, fig.height=5}
+K <- 3
+sim <- get_nonunique_nmf_sphere(M = 2000, N=1000)
+data_matrix <- sim$V
+true_basis <- sim$W
+true_proportions <- sim$H
+
+
+dso <- DualSimplexSolver$new()
+dso$set_data(data_matrix)
+dso$project(K)
+
+# also get coordinates for true solution
+true_solution_coordinates <-  dso$get_coordinates_from_external_matrices(true_basis, true_proportions)
+alternative_solution <-  get_alternative_solution(true_basis, true_proportions)
+alternative_solution_coordinates <-  dso$get_coordinates_from_external_matrices(alternative_solution$W, alternative_solution$H)
+
+projection_plot <- dso$plot_projected(color_genes  = "red", 
+                                      color_samples = "red", 
+                                      use_dims = 2:3, wrap = F,  show_plots = F, with_legend = T, 
+                                      pt_opacity=0.8, pt_size=2)
+
+original_plot_X <- projection_plot[[1]] %>% add_points_to_plot(true_solution_coordinates$X,  
+                                                      color_lines =colors_for_genes[7],
+                                                      color_points = colors_for_genes[5], points_label = "true solution")
+
+
+
+original_plot_Omega <- projection_plot[[2]] %>% add_points_to_plot(true_solution_coordinates$Omega, 
+                                                          color_lines =colors_for_samples[7],
+                                                          color_points = colors_for_samples[5],points_label = "true solution")
+
+original_plot_X_no_legend <- (projection_plot[[1]] + theme(legend.position = "none")) %>% add_points_to_plot(true_solution_coordinates$X,  
+                                                      color_lines =colors_for_genes[7],
+                                                      color_points = colors_for_genes[5], points_label = NULL)
+
+
+original_plot_X
+original_plot_Omega
+```
+## Plot alternative solutions
+
+```{r}
+current_solution <- true_solution_coordinates
+final_solutions <- list()
+
+
+second_plot_X_with_rotations <-  original_plot_X
+second_plot_Omega_with_rotations <-  original_plot_Omega
+
+
+
+for (theta_step in c(1:5)) {
+  rotated_solution <-  get_rotation_of_solution(current_solution$X, current_solution$Omega, theta = (5*theta_step+1))
+  
+  target_solution <- set_solution_from_x(X=rotated_solution$X, proj= dso$st$proj)
+
+  W_estimate <- t(dso$st$proj$meta$S) %*% t(target_solution$Omega)
+  if (sum(W_estimate < 0) > 1) {
+    print("solution for W was negative")
+    second_plot_X_with_rotations <-  second_plot_X_with_rotations %>% add_points_to_plot(target_solution$X, color_lines = "pink", 
+                                                           color_points = "pink", 
+                                                           points_label="incorrect solution",
+                                                           with_points = T
+                                                           )
+  } else {
+    print("solution for W was OK")
+    second_plot_X_with_rotations <-  second_plot_X_with_rotations %>% add_points_to_plot(target_solution$X, color_lines = "green", 
+                                                           color_points = "green", 
+                                                           points_label="possible solution",
+                                                           with_points = T
+                                                           )
+    
+  }
+
+  H_estimate <- target_solution$X %*% dso$st$proj$meta$R
+  if (sum(H_estimate < 0) > 1) {
+    print("solution_was negative")
+        
+  second_plot_Omega_with_rotations <-  second_plot_Omega_with_rotations %>% add_points_to_plot(target_solution$Omega, color_lines = "pink", color_points = "pink",
+                                                         with_points = T, points_label="incorrect solution")
+  }
+  else {
+    print("solution was OK")
+      second_plot_Omega_with_rotations <-  second_plot_Omega_with_rotations %>% add_points_to_plot(target_solution$Omega, color_lines = "green", color_points = "green",
+                                                         with_points = T, points_label="possible solution")
+  }
+  dso$st$solution_proj <- target_solution
+    
+
+  
+  solution <- dso$finalize_solution()
+  W <- dso$st$solution_no_corr$Dv_inv_W_row
+  H <- dso$st$solution_no_corr$H_row
+  print(all.equal(data_matrix, W %*% H))
+
+  final_solutions[[theta_step]] <- list(W=W, H=H)
+
+
+}
+
+second_plot_X_with_rotations
+second_plot_Omega_with_rotations
+```
+
+
+## Actual generation
+
+
+```{r}
+set.seed(5)
+N <- 1000
+M <-  2000
+## Params
+
+number_of_datasets <- 1
+number_of_solutions <-  4
+
+## To store matrices
+per_dataset_proportions <- list()
+per_dataset_basis <-  list()
+per_dataset_matrix <- list()
+
+
+for (current_dataset in c(1:number_of_datasets)) {
+  simulation <-  get_nonunique_nmf_sphere(N=N, M=M)
+  per_dataset_matrix[[current_dataset]] <-  simulation$V
+  per_dataset_proportions[[current_dataset]] <-  simulation$H
+  per_dataset_basis[[current_dataset]] <-  simulation$W
+}
+names(per_dataset_matrix) <-  c(1:number_of_datasets)
+names(per_dataset_proportions) <-  c(1:number_of_datasets)
+names(per_dataset_basis) <-  c(1:number_of_datasets)
+
+```
+
+
+
+
+
+# Deconvolve truncated matrices with multiple methods
+
+
+
+
+## Run all methods
+### Run multiple optimizations
+```{r fig.show='hide'}
+per_run_results <-  list()
+for (current_run in 1:number_of_solutions) {
+  current_method <- paste0("DualSimplex_", current_run)
+  print(paste("Method", current_method))
+  per_run_results[[current_method]] <-  list()
+  per_run_results[[current_method]][['object']] <-  list()
+  per_run_results[[current_method]][['proportions']] <-  list()
+  set.seed(current_run * 4)
+  for (selected_dataset in names(per_dataset_matrix)) {
+    print(paste("Dataset", selected_dataset))
+    mat <- per_dataset_matrix[[selected_dataset]]
+    current_true_proportions <- per_dataset_proportions[[selected_dataset]]
+    current_true_basis <- per_dataset_basis[[selected_dataset]]
+    K <-  dim(current_true_proportions)[[1]]
+
+    result_list <- deconvolve_with_DualSimplex(mat, K)
+    print("writing results")
+    estimated_proportions <- result_list$proportions
+    result_object <- result_list$object
+    per_run_results[[current_method]][['object']][[selected_dataset]] <-  result_object
+    per_run_results[[current_method]][['proportions']][[selected_dataset]] <-  result_list$proportions
+    per_run_results[[current_method]][['basis']][[selected_dataset]] <-  result_list$basis[,rownames(result_list$proportions)]
+  }
+}
+  
+```
+
+
+
+
+
+
+
+
+
+### Plot all triangles in projected space
+
+```{r}
+methods_to_check <- names(per_run_results)
+custom_colors <-  unname(Polychrome::palette36.colors(length(methods_to_check)))
+names(custom_colors) <- methods_to_check
+```
+
+```{r}
+dso <-  per_run_results$DualSimplex_1$object[[1]]
+true_proportions <- per_dataset_proportions[[1]]
+true_basis <- per_dataset_basis[[1]]
+data_raw <- per_dataset_matrix[[1]]
+
+# also get coordinates for true solution
+true_solution_coordinates <-  dso$get_coordinates_from_external_matrices(true_basis, true_proportions)
+
+projection_plot <- dso$plot_projected(color_genes = colors_for_genes[4],   
+                                      color_samples = colors_for_samples[4],
+                                      use_dims = 2:3, wrap = F, show_plots = F, with_legend = T, with_history = F, with_solution = F,
+                                      pt_opacity=0.8, pt_size=1)
+
+
+
+plot_X <-  projection_plot[[1]]
+plot_Omega <-  projection_plot[[2]]
+
+for( current_method in names(per_run_results)){
+  solution_H <- per_run_results[[current_method]]$proportions[[1]]
+  res <- DualSimplex::nnls_C__(t(solution_H), t(data_raw))
+  solution_W <- t(res)
+  colnames(solution_W) <-  paste("cell_type", c(1:dim(solution_H)[[1]])) 
+  rownames(solution_W) <-  rownames(data_raw)
+  current_solution_coordinates <-  dso$get_coordinates_from_external_matrices(solution_W, solution_H)
+
+  print(current_method)
+  plot_X = plot_X %>% add_points_to_plot(current_solution_coordinates$X,  
+                                                      color_lines =custom_colors[[current_method]],
+                                                      color_points = custom_colors[[current_method]], 
+                                          line_type = 'solid', points_label = current_method)
+  plot_Omega = plot_Omega %>% add_points_to_plot(current_solution_coordinates$Omega, 
+                                                          color_lines =custom_colors[[current_method]],
+                                                          color_points = custom_colors[[current_method]],line_type = 'solid',
+                                                         points_label = current_method,)
+  
+  
+
+}
+
+   
+
+plot_X <- plot_X %>% add_points_to_plot(true_solution_coordinates$X,  
+                                                      color_lines ='gray',
+                                                      color_points = 'gray')
+plot_Omega <- plot_Omega %>% add_points_to_plot(true_solution_coordinates$Omega, 
+                                                          color_lines ='gray',
+                                                          color_points = 'gray')
+
+
+  #+ scale_color_manual("Line.Color", values=custom_colors,
+                  #    labels=names(custom_colors)) + theme(legend.position = "right")
+multiple_solution_plot_X <- plot_X
+multiple_solution_plot_Omega <- plot_Omega
+
+multiple_solution_plot_X
+multiple_solution_plot_Omega
+```
+
+
+## Save figures
+
+```{r}
+### Trivial case
+
+#### Original plots
+filename <- paste0(dir_to_save_fig, "trivial_original_X", ".svg")
+ggsave(
+  file = filename,
+  plot = trivial_plot_X,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "trivial_original_Omega", ".svg")
+ggsave(
+  file = filename,
+  plot = trivial_plot_Omega,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+
+filename <- paste0(dir_to_save_fig, "trivial_original_X_no_leg", ".svg")
+ggsave(
+  file = filename,
+  plot = trivial_plot_X + theme(legend.position = "none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "trivial_original_Omega_no_leg", ".svg")
+ggsave(
+  file = filename,
+  plot = trivial_plot_Omega + theme(legend.position = "none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+#### With rotations
+
+filename <- paste0(dir_to_save_fig, "trivial_with_rotations_X", ".svg")
+ggsave(
+  file = filename,
+  plot = trivial_plot_X_with_rotations,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "trivial_with_rotations_Omega", ".svg")
+ggsave(
+  file = filename,
+  plot = trivial_plot_Omega_with_rotations,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+
+filename <- paste0(dir_to_save_fig, "trivial_with_rotations_X_no_leg", ".svg")
+ggsave(
+  file = filename,
+  plot = trivial_plot_X_with_rotations + theme(legend.position = "none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "trivial_with_rotations_Omega_no_leg", ".svg")
+ggsave(
+  file = filename,
+  plot = trivial_plot_Omega_with_rotations + theme(legend.position = "none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+#### With DS solutions
+
+filename <- paste0(dir_to_save_fig, "trivial_with_solutions_X", ".svg")
+ggsave(
+  file = filename,
+  plot = trivial_multiple_solution_plot_X,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "trivial_with_solutions_Omega", ".svg")
+ggsave(
+  file = filename,
+  plot = trivial_multiple_solution_plot_Omega,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+
+filename <- paste0(dir_to_save_fig, "trivial_with_solutions_X_no_leg", ".svg")
+ggsave(
+  file = filename,
+  plot = trivial_multiple_solution_plot_X + theme(legend.position = "none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "trivial_with_solutions_Omega_no_leg", ".svg")
+ggsave(
+  file = filename,
+  plot = trivial_multiple_solution_plot_Omega + theme(legend.position = "none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+
+### Second case
+
+#### Original plots
+filename <- paste0(dir_to_save_fig, "second_original_X", ".svg")
+ggsave(
+  file = filename,
+  plot = original_plot_X,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "second_original_Omega", ".svg")
+ggsave(
+  file = filename,
+  plot = original_plot_Omega,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+
+filename <- paste0(dir_to_save_fig, "second_original_X_no_leg", ".svg")
+ggsave(
+  file = filename,
+  plot = original_plot_X + theme(legend.position = "none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "second_original_Omega_no_leg", ".svg")
+ggsave(
+  file = filename,
+  plot = original_plot_Omega + theme(legend.position = "none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+#### With rotations
+
+filename <- paste0(dir_to_save_fig, "second_with_rotations_X", ".svg")
+ggsave(
+  file = filename,
+  plot = second_plot_X_with_rotations,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "second_with_rotations_Omega", ".svg")
+ggsave(
+  file = filename,
+  plot = second_plot_Omega_with_rotations,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+
+filename <- paste0(dir_to_save_fig, "second_with_rotations_X_no_leg", ".svg")
+ggsave(
+  file = filename,
+  plot = second_plot_X_with_rotations + theme(legend.position = "none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "second_with_rotations_Omega_no_leg", ".svg")
+ggsave(
+  file = filename,
+  plot = second_plot_Omega_with_rotations + theme(legend.position = "none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+#### With DS solutions
+
+filename <- paste0(dir_to_save_fig, "second_with_solutions_X", ".svg")
+ggsave(
+  file = filename,
+  plot = multiple_solution_plot_X,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "second_with_solutions_Omega", ".svg")
+ggsave(
+  file = filename,
+  plot = multiple_solution_plot_Omega,
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+
+filename <- paste0(dir_to_save_fig, "second_with_solutions_X_no_leg", ".svg")
+ggsave(
+  file = filename,
+  plot = multiple_solution_plot_X + theme(legend.position = "none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "second_with_solutions_Omega_no_leg", ".svg")
+ggsave(
+  file = filename,
+  plot = multiple_solution_plot_Omega + theme(legend.position = "none"),
+  width = 3,
+  height = 3,
+  device = svglite
+)
+
+
+```

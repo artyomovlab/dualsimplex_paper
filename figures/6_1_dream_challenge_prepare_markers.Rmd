@@ -1,0 +1,907 @@
+# Dependencies
+
+```{r}
+source('../R/setup.R')
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(Seurat)
+library(svglite)
+dir_to_save_fig <- "../out/9_dream_markers/"
+dir_to_save_markers <- "../data/large/"
+dir.create(file.path(".", dir_to_save_fig), showWarnings = F, recursive = T)
+set.seed(1234)
+```
+
+# Load the data
+
+## Download annotations
+
+```{r}
+library(GEOquery)
+dataset <- "GSE199324"
+gse <- getGEO(dataset, AnnotGPL = T)
+gse <-  gse[[1]]
+```
+
+```{r}
+sample_annotation <-  pData(gse)
+rownames(sample_annotation) <- sample_annotation$title
+sample_annotation$label <-  NULL
+sample_annotation[c("Macrophages_2","Macrophages_1"), 'label'] <-  "macrophages"
+sample_annotation[c("Memory_CD8_T_cells_2","Memory_CD8_T_cells_1"), 'label'] <-  "memory.CD8.T.cells"
+sample_annotation[c("Naive_CD8_T_cells_2"), 'label'] <-  "naive.CD8.T.cells"
+sample_annotation[c("Memory_CD4_T_cells_1", "Memory_CD4_T_cells_2"), 'label'] <-  "memory.CD4.T.cells"
+sample_annotation[c("Monocytes_1", "Monocytes_2"), 'label'] <-  "monocytes"
+sample_annotation[c("Naive_CD4_T_cells_1", "Naive_CD4_T_cells_2"), 'label'] <-  "naive.CD4.T.cells"
+sample_annotation[c("Naive_B_cells_1"), 'label'] <-  "naive.B.cells"
+sample_annotation[c("Dendritic_cells_1", "Dendritic_cells_2"), 'label'] <-  "myeloid.dendritic.cells"
+sample_annotation[c("CRC"), 'label'] <-  "CRC_C"
+sample_annotation[c("Fibroblasts"), 'label'] <-  "fibroblasts"
+sample_annotation[c("NK_cells_1", "NK_cells_2"), 'label'] <-  "NK.cells"
+sample_annotation[c("Neutrophils_2"), 'label'] <-  "neutrophils"
+sample_annotation[c("Tregs"), 'label'] <-  "regulatory.T.cells"
+sample_annotation[c("Endothelial_cells"), 'label'] <-  "endothelial.cells"
+sample_annotation[c("Breast"), 'label'] <-  "Breast_C"
+sample_annotation$sample <- rownames(sample_annotation)
+```
+
+## Download matrix itself
+This matrix was downloaded from DREAM challenge paper synapse folders
+
+```{r}
+total_data <-read.csv("../data/large/DREAM_GSE199324_symbol_counts.csv.gz", row.names = 1)
+```
+
+```{r}
+dim(total_data)
+```
+
+## Keep only pure samples (for markers search)
+
+```{r}
+sample_annotation <- sample_annotation %>% arrange(label)
+sample_annotation$label <- as.factor(sample_annotation$label)
+selected_annotation <-  sample_annotation[!is.na(sample_annotation$label), ]
+factor_for_cell_type <- factor(selected_annotation$label, 
+                        levels = unique(selected_annotation$label))
+selected_samples <- rownames(selected_annotation)
+pure_sample_data <- total_data[,selected_samples ]
+
+normalized_pure_sample_data <-  sweep(pure_sample_data,2,colSums(pure_sample_data),`/`)
+
+## Also calculate true_basis as average expression for cell type
+res <-  lapply(unique(selected_annotation$label), function (cell_type) {
+  target_samples <- selected_annotation[selected_annotation$label == cell_type,]$sample
+  if (length(target_samples) > 1) {
+    return (rowMeans(normalized_pure_sample_data[, target_samples]))
+  }
+  else {
+    return(normalized_pure_sample_data[, target_samples])
+  }
+})
+
+true_basis <- do.call(cbind,res)
+colnames(true_basis) <-  unique(selected_annotation$label)
+# Also prepare 15 colors to differentiate dots
+custom_colors <- unname(Polychrome::palette36.colors(length(colnames(true_basis))))
+custom_colors[2] <-  "#C4451C"
+
+```
+
+
+
+
+
+# Methods to check markers
+
+
+```{r}
+expression_heatmap_plot <-  function(selected_marker_list, input_data, factor_rows = NULL) {
+  
+  target_marker_list <- selected_marker_list
+
+  ## Just ensure all markers are present in the data to avoid missing values
+  all_markers <- unlist(target_marker_list)
+  present_markers <- intersect(rownames(input_data), all_markers)
+  for (ct in names(target_marker_list)) {
+    target_marker_list[[ct]] <- target_marker_list[[ct]][target_marker_list[[ct]] %in% present_markers]
+  }
+  print(paste("The number of markers missing in the data: ", length(all_markers) - length(present_markers)))
+  
+  ## Prepare to plot heatmap
+  to_plot <- input_data[unlist(target_marker_list),]
+  # Minmax scaling for visualization only
+  to_plot <- as.data.frame(apply(to_plot, 1, function(x)(x - min(x)) / (max(x) - min(x))))
+  nrows <- dim(to_plot)[[1]]
+  ncols <- dim(to_plot)[[2]]
+  if (is.null(factor_rows)) {
+      factor_rows <- factor(colnames(input_data), levels=colnames(input_data))
+    
+  }
+  
+  
+  factor_columns <- factor(unlist(sapply(1:length(target_marker_list), 
+                                         function(i) {rep(i, length(target_marker_list[[i]]))})), 
+                           levels=1:length(target_marker_list))
+  marker_map <- Heatmap(
+    as.matrix(to_plot),
+    name = "W",
+    cluster_rows = FALSE,
+    cluster_columns = FALSE,
+    show_column_names = FALSE,
+    show_row_names = FALSE,
+    show_heatmap_legend = F,
+    column_split = factor_columns,
+    row_split = factor_rows,
+    use_raster = T,
+    column_title_gp = gpar(
+      fill = custom_colors,
+      border = "black",
+      fontsize = 20
+      ),
+    row_title_gp = gpar(fontsize = 12),
+    column_title_side  = "bottom",
+    row_title_rot = 0
+    )
+  
+  return(list(remaining_markers = target_marker_list, marker_heatmap=marker_map))
+}
+
+```
+
+# Also prepare dualsimplex object from pure samples data (for visualization of markers) 
+
+```{r}
+data_raw <-  as.matrix(pure_sample_data)
+data_raw <- sweep(data_raw,2,colSums(data_raw),`/`)
+
+msigdbr_df <- rbind(
+  msigdbr::msigdbr(species = "Homo sapiens", category = "C5", subcategory = "GO:CC"),
+  msigdbr::msigdbr(species = "Homo sapiens", category = "C5", subcategory = "GO:BP")
+)
+pathways <- split(x = msigdbr_df$gene_symbol, f = msigdbr_df$gs_name)
+ribosome_pathways <- names(pathways)[grep("^GO[[:alnum:]].*RIBOSOM.*", names(pathways))]
+mitochondrion_pathways <- names(pathways)[grep("^GO[[:alnum:]].*MITOCHOND.*", names(pathways))]
+CODING_GENE_NAMES <-  read_gene_list("../data/gene_annotation_lists/CODING_ENSEMBL.txt")
+CC_GENE_NAMES <-   read_gene_list("../data/gene_annotation_lists/CC.txt")
+HK_GENE_NAMES <-  read_gene_list("../data/gene_annotation_lists/HK.txt")
+MITO_GENE_NAMES <- unique(unlist(pathways[mitochondrion_pathways]))
+RIBO_GENE_NAMES <- unique(unlist(pathways[ribosome_pathways]))
+gene_anno <- list(
+  CODING = CODING_GENE_NAMES,
+  CC = CC_GENE_NAMES,
+  HK = HK_GENE_NAMES,
+  MITO= MITO_GENE_NAMES,
+  RIBO=RIBO_GENE_NAMES
+)
+K <- length(unique(selected_annotation$label))
+dso <- DualSimplexSolver$new()
+data_raw <-  as.matrix(remove_zero_rows(data_raw))
+dso$set_data(data_raw, max_sinkhorn_iterations = 300, gene_anno=gene_anno, sinkhorn_tol = 1e-18)
+dso$project(K)
+remove_categories <- c("CC", "MITO", "RIBO", "HK")
+dso$basic_filter(remove_true_cols_additional = remove_categories, keep_true_cols = "CODING",
+                 log_mad_gt = -Inf)
+dso$project(K)
+dso$basic_filter(log_mad_gt = 0)
+dso$project(K)
+print("after_all filters")
+print(dim(dso$st$data))
+dso$run_umap(neighbors_X = 15, neighbors_Omega = 3)
+```
+# Select number of markerss
+```{r}
+number_of_markers <- 20 
+```
+
+
+# First get markers with Seurat
+
+```{r}
+new_pure_sample_data <-  pure_sample_data
+data_for_marker_calculation <- new_pure_sample_data
+data_for_marker_calculation <-  sweep(data_for_marker_calculation,2,colSums(data_for_marker_calculation),`/`)
+
+#just copy columns to pass to the seurat since we don't have enough columns per cell type
+pure_sample_data1 <-  data_for_marker_calculation
+colnames(pure_sample_data1) <-  paste("1_", colnames(data_for_marker_calculation))
+pure_sample_data2 <-  data_for_marker_calculation
+colnames(pure_sample_data2) <-  paste("2_", colnames(data_for_marker_calculation))
+pure_sample_data3 <-  data_for_marker_calculation
+colnames(pure_sample_data3) <-  paste("3_", colnames(data_for_marker_calculation))
+
+# use seurat to extract markers
+sobj <- CreateSeuratObject(cbind(pure_sample_data1,pure_sample_data2,pure_sample_data3), assay = "total_data")
+
+sobj@meta.data$cluster <- c( selected_annotation$label,  selected_annotation$label,  selected_annotation$label)
+
+sobj <- NormalizeData(sobj, normalization.method = "LogNormalize", scale.factor = 10000)
+
+Idents(object = sobj) <-  c( selected_annotation$label,  selected_annotation$label,  selected_annotation$label)
+sobj@assays$total_data$data  <- sobj@assays$total_data$counts
+total_marker_data <- FindAllMarkers(sobj, only.pos = TRUE)
+
+marker_data <- total_marker_data %>% filter(p_val < 1e-2) %>%
+    group_by(cluster) %>% slice_max(order_by = avg_log2FC, n = number_of_markers, with_ties = F)
+#avg_log2FC
+  #slice_ma(wt = avg_log2FC, n = 100)
+
+seurat_markers <- list()
+
+for (cluster in unique(marker_data$cluster)) {
+  seurat_markers[[cluster]] <-  marker_data[marker_data$cluster == cluster,]$gene
+}
+marker_data %>% group_by(cluster) %>% summarize(total_count=n())
+```
+
+
+
+## Check expression of markers
+
+### Normalized samples
+
+```{r fig.height = 10, fig.width = 10}
+selected_marker_list <-  seurat_markers[colnames(true_basis)]
+res <- expression_heatmap_plot(selected_marker_list, input_data=normalized_pure_sample_data, factor_rows = factor_for_cell_type)
+
+heatmap_pure_samples_seurat <-  res$marker_heatmap
+heatmap_pure_samples_seurat
+```
+
+### Basis expression 
+
+```{r fig.height = 10, fig.width = 10}
+res <- expression_heatmap_plot(selected_marker_list, input_data=true_basis)
+heatmap_basis_seurat <-  res$marker_heatmap
+heatmap_basis_seurat
+```
+
+### Color markers in pure samples object
+
+
+```{r, fig.width=8,fig.height=6}
+dso$st$marker_genes <- selected_marker_list
+result <-  dso$plot_projected("markers", "label", use_dims =  list(2:3, 4:5, 6:7, 8:9,10:11,11:12, 13:14, NULL), 
+                              with_history = F, with_solution=F, wrap=F, show_plots = F, with_legend = T)
+
+plot_seurat_markers_2_3 <- result[[1]][[1]] +  scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_markers_4_5 <- result[[2]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_markers_6_7 <- result[[3]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_markers_8_9 <- result[[4]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_markers_10_11 <- result[[5]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_markers_11_12 <- result[[6]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_markers_13_14 <- result[[7]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_markers_umap <- result[[8]][[1]] +    scale_color_manual(values=custom_colors)
+
+# show some
+plot_seurat_markers_2_3 
+plot_seurat_markers_4_5
+plot_seurat_markers_6_7
+plot_seurat_markers_umap
+```
+
+# Same but also ensure that all "cells" expressing this gene
+
+
+```{r}
+new_pure_sample_data <-  pure_sample_data
+data_for_marker_calculation <- new_pure_sample_data
+data_for_marker_calculation <-  sweep(data_for_marker_calculation,2,colSums(data_for_marker_calculation),`/`)
+res <-  lapply(unique(selected_annotation$label), function (cell_type) {
+  target_samples <- selected_annotation[selected_annotation$label == cell_type,]$sample
+  if (length(target_samples) > 1) {
+    return (rowMeans(data_for_marker_calculation[, target_samples]))
+  }
+  else {
+    return(data_for_marker_calculation[, target_samples])
+  }
+})
+
+true_basis <- do.call(cbind,res)
+colnames(true_basis) <-  unique(selected_annotation$label)
+
+#just copy columns to pass to the seurat
+pure_sample_data1 <-  data_for_marker_calculation
+colnames(pure_sample_data1) <-  paste("1_", colnames(data_for_marker_calculation))
+pure_sample_data2 <-  data_for_marker_calculation
+colnames(pure_sample_data2) <-  paste("2_", colnames(data_for_marker_calculation))
+pure_sample_data3 <-  data_for_marker_calculation
+colnames(pure_sample_data3) <-  paste("3_", colnames(data_for_marker_calculation))
+
+# use seurat to extract markers
+sobj <- CreateSeuratObject(cbind(pure_sample_data1,pure_sample_data2,pure_sample_data3), assay = "total_data")
+
+sobj@meta.data$cluster <- c( selected_annotation$label,  selected_annotation$label,  selected_annotation$label)
+
+sobj <- NormalizeData(sobj, normalization.method = "LogNormalize", scale.factor = 10000)
+
+Idents(object = sobj) <-  c( selected_annotation$label,  selected_annotation$label,  selected_annotation$label)
+sobj@assays$total_data$data  <- sobj@assays$total_data$counts
+total_marker_data <- FindAllMarkers(sobj, only.pos = TRUE)
+
+marker_data <- total_marker_data %>% filter(pct.1 == 1)%>%  filter(p_val < 1e-2) %>%
+    group_by(cluster) %>% slice_max(order_by = avg_log2FC, n = number_of_markers, with_ties = F)
+#avg_log2FC
+  #slice_ma(wt = avg_log2FC, n = 100)
+
+seurat_eb_markers <- list()
+
+for (cluster in unique(marker_data$cluster)) {
+  seurat_eb_markers[[cluster]] <-  marker_data[marker_data$cluster == cluster,]$gene
+}
+
+
+```
+
+
+
+## Check expression of markers
+
+### Normalized samples
+
+```{r fig.height = 10, fig.width = 10}
+selected_marker_list <-  seurat_eb_markers[colnames(true_basis)]
+res <- expression_heatmap_plot(selected_marker_list, input_data=normalized_pure_sample_data, factor_rows = factor_for_cell_type)
+
+heatmap_pure_samples_seurat_eb <- res$marker_heatmap
+heatmap_pure_samples_seurat_eb
+```
+
+### Basis expression 
+
+```{r fig.height = 10, fig.width = 10}
+res <- expression_heatmap_plot(selected_marker_list, input_data=true_basis)
+heatmap_basis_seurat_eb <- res$marker_heatmap
+heatmap_basis_seurat_eb
+```
+
+### Color markers in pure samples object
+
+
+```{r, fig.width=8,fig.height=6}
+dso$st$marker_genes <- selected_marker_list
+result <-  dso$plot_projected("markers", "label", use_dims =  list(2:3, 4:5, 6:7, 8:9,10:11,11:12, 13:14, NULL), 
+                              with_history = F, with_solution=F, wrap=F, show_plots = F, with_legend = T)
+
+plot_seurat_eb_markers_2_3 <- result[[1]][[1]] +  scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_eb_markers_4_5 <- result[[2]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_eb_markers_6_7 <- result[[3]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_eb_markers_8_9 <- result[[4]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_eb_markers_10_11 <- result[[5]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_eb_markers_11_12 <- result[[6]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_eb_markers_13_14 <- result[[7]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_seurat_eb_markers_umap <- result[[8]][[1]] +    scale_color_manual(values=custom_colors)
+
+# show some
+plot_seurat_eb_markers_2_3 
+plot_seurat_eb_markers_4_5
+plot_seurat_eb_markers_6_7
+plot_seurat_eb_markers_umap
+```
+# Select markers using Voom normalization
+## Methods
+```{r}
+library(limma)
+library(edgeR)
+library(Biobase)
+library(dplyr)
+library(phantasusLite)
+library(data.table)
+limmaAnalysisSimpleImpl <- function(es, fieldValues, contrast){
+    fieldValues <- replace(fieldValues, fieldValues == "", NA)
+
+    es.copy <- es
+    es.copy$Comparison <- fieldValues
+    pData(es.copy)[,"Comparison"] <- as.factor(pData(es.copy)[,"Comparison"])
+    pData(es.copy)[,"Comparison"] <- relevel(pData(es.copy)[,"Comparison"], ref = "Reference")
+    fData(es.copy) <- data.frame(row.names = rownames(es.copy))
+    es.copy <- es.copy[, !is.na(fieldValues)]
+
+    # Getting rid of check NOTEs
+    Comparison=ComparisonA=ComparisonB=NULL
+
+    es.design <- stats::model.matrix(~0 + Comparison, data = pData(es.copy))
+    es.copy <- voomNormalization( es.copy, filterByExp = T, designMatrix = es.design)
+    
+    
+    fit <- lmFit(es.copy, es.design)
+
+    A <- NULL; B <- NULL
+    fit2 <- contrasts.fit(fit, makeContrasts(ComparisonTarget - ComparisonReference, levels = es.design))
+    fit2 <- eBayes(fit2)
+    de <- topTable(fit2, adjust.method = "BH", number = Inf)
+    de <- de[row.names(fData(es.copy)), ]
+    return(list(de=de, es=es.copy))
+}
+limmaAnalysisAdvancedImpl <- function(es, designData, contrast){
+    ux_designMatrix <- getDesignMatrix(designData)
+
+    es.copy <- es
+    fData(es.copy) <- data.frame(row.names = rownames(es.copy))
+    colnames(ux_designMatrix) <-  make.names(colnames(ux_designMatrix))
+    target_level <- make.names(paste0(contrast[1],contrast[3]))
+    reference_level <-  make.names(paste0(contrast[1],contrast[2]))
+
+
+    fit <- lmFit(es.copy, ux_designMatrix)
+    fit2 <- contrasts.fit(fit, makeContrasts(contrasts = paste(reference_level,target_level, sep = "-"), levels = ux_designMatrix))
+    fit2 <- eBayes(fit2)
+    de <- topTable(fit2, adjust.method = "BH", number = Inf)
+    de <- de[row.names(fData(es.copy)), ]
+    return(de)
+}
+
+
+#' Differential Expression analysis.
+#'
+#' \code{limmaAnalysis} performs differential expression analysis
+#'     from limma package and returns a ProtoBuf-serialized resulting
+#'     de-matrix.
+#'
+#' @param es ExpressionSet object. It should be normalized for
+#'     more accurate analysis.
+#'
+#' @param fieldValues Vector of comparison values, mapping
+#'     categories' names to columns/samples
+#'
+#' @param version name of the limma analysis implementation. Should be "One-factor design" or "Advanced design"
+#'
+#' @param contrast a character vector with exactly three elements: the name of a factor in the design formula, the name of the numerator level for the fold change, and the name of the denominator level for the fold change
+#'
+#' @param designData data.frame with design matrix
+#'
+#' @return Name of the file containing serialized de-matrix.
+#'
+#' @import Biobase
+#' @import limma
+#'
+#' @examples
+#' \dontrun{
+#' data(es)
+#' limmaAnalysis(es, fieldValues = c("A", "A", "A", "B", "B"))
+#' }
+#' @keywords internal
+limmaAnalysis <- function (es, fieldValues, version = "One-factor design", contrast =  list('Comparison', 'Target', 'Reference'), designData = NULL) {
+  fieldValues[fieldValues == contrast[3]] <- "Reference"
+  fieldValues[fieldValues == contrast[2]] <- "Target"
+  fieldValues <- replace(fieldValues, fieldValues == "", NA)
+  de <- NULL
+  contrast <- unlist(contrast)
+  if (version == "One-factor design" ){
+      simple_lima_result <- limmaAnalysisSimpleImpl(es, fieldValues, contrast)
+      de <- simple_lima_result$de
+      es <- simple_lima_result$es
+  }
+  if (version == "Advanced design"){
+      de <- limmaAnalysisAdvancedImpl(es, designData, contrast)
+  }
+      deDf <- as.data.frame(de)
+  toRemove <- intersect(colnames(fData(es)), colnames(deDf))
+  fData(es)[, toRemove] <- NULL
+
+  es$Comparison <- fieldValues
+  fData(es) <- cbind(fData(es), deDf)
+  assign("es", es, envir = parent.frame())
+
+    # f <- tempfile(pattern = "de", tmpdir = getwd(), fileext = ".bin")
+    # writeBin(protolite::serialize_pb(as.list(de)), f)
+    # jsonlite::toJSON(f)
+    return(es)
+}
+
+
+
+voomNormalization <- function(es,designMatrix, filterByExp = FALSE){
+    es.copy <- es
+    keep <- TRUE
+    if (filterByExp){
+        keep <- filterByExpr(exprs(es.copy), design = designMatrix)
+    }
+    es.copy <- es.copy[keep,]
+    voom_counts <- voom(counts = exprs(es.copy), design=designMatrix)
+    exprs(es.copy) <- voom_counts$E
+    assayDataElement(es.copy, "weights") <- voom_counts$weights
+    return( es.copy)
+}
+
+get_object_for_phantasus <-  function(all_counts, rowdata, coldata, row_id='gene_name') {
+  fData <- rowdata
+  pData <- as.data.frame(coldata)
+  rownames(fData) <- fData[[row_id]]
+  rownames(pData) <- colnames(all_counts)
+  metadata <- data.frame(labelDescription=names(pData),
+                       row.names=names(pData))
+  phenoData <- new("AnnotatedDataFrame", data=pData, varMetadata=metadata)
+  metadata <- data.frame(labelDescription=names(fData),
+                       row.names=names(fData))
+  featureData <- new("AnnotatedDataFrame", data=fData, varMetadata=metadata)
+  ed <- new ("MIAME",
+          name="temp object to find markers",
+          lab="",
+          title="Test object",
+          contact="",
+          pubMedIds="",
+          url="",
+          other=list())
+  eset <- ExpressionSet(assayData = as.matrix(all_counts), phenoData = phenoData, featureData = featureData, experimentData = ed)
+  ess <- list(chikv_cluster_cond=eset)
+  return(ess)
+}
+
+```
+
+## Perform DE analysis
+
+```{r}
+rowdata <- data.frame(gene_name = rownames(pure_sample_data))
+rownames(rowdata) <-  rowdata$gene_name
+sample_annotation$cell_type <-  sample_annotation$label
+coldata <- sample_annotation[colnames(pure_sample_data),]
+
+row_id='gene_name'
+
+
+for (cell_type in unique(coldata$cell_type)) {
+  coldata[, cell_type] <- "others"
+  coldata[coldata$cell_type == cell_type, cell_type] <-  "target"
+}
+
+target_data <- pure_sample_data
+current_es <-  get_object_for_phantasus(target_data, rowdata, coldata, row_id = 'gene_name')[[1]]
+```
+
+
+## Run all diff expressions
+```{r}
+de_results_lima = list()
+for (cell_type in unique(coldata$cell_type)) {
+  print(cell_type)
+  condition_1 <-  "others"
+  condition_2 <- "target"
+  de_result_lima <- limmaAnalysis(current_es, fieldValues = current_es[[cell_type]],  contrast = c("Conditions",condition_2, condition_1 ))
+  de_results_lima[[cell_type]] <- de_result_lima
+}
+
+```
+
+```{r}
+lima_markers <- list()
+lima_marker_data <-  list()
+
+for (cell_type in names(de_results_lima)) {
+    de_result_lima <- de_results_lima[[cell_type]]
+    cur_pdt <- data.table(fData(de_result_lima))
+    cur_pdt$gene_name <- rownames(fData(de_result_lima))
+    cur_pdt$cell_type <- cell_type
+    lima_marker_data[[cell_type]] <- cur_pdt
+}
+total_table <- do.call(rbind, lima_marker_data)
+collapsed_total_table <- total_table %>% group_by(gene_name) %>% arrange(desc(.data$t)) %>% filter(row_number() == 1)
+
+marker_data <- collapsed_total_table %>% filter(P.Value < 1e-2) %>% filter(AveExpr >0) %>%
+    group_by(cell_type) %>%  slice_max(order_by = t, n = number_of_markers, with_ties = F)
+
+
+lima_markers <- list()
+
+for (cluster in unique(marker_data$cell_type)) {
+  lima_markers[[cluster]] <-  marker_data[marker_data$cell_type == cluster,]$gene_name
+}
+```
+
+## Check expression of markers
+
+### Normalized samples
+
+```{r fig.height = 10, fig.width = 10}
+selected_marker_list <-  lima_markers[colnames(true_basis)]
+res <- expression_heatmap_plot(selected_marker_list, input_data=normalized_pure_sample_data, factor_rows = factor_for_cell_type)
+
+heatmap_pure_samples_lima <- res$marker_heatmap
+heatmap_pure_samples_lima
+```
+
+### Basis expression 
+
+```{r fig.height = 10, fig.width = 10}
+res <- expression_heatmap_plot(selected_marker_list, input_data=true_basis)
+heatmap_basis_lima <- res$marker_heatmap
+heatmap_basis_lima
+```
+
+### Color markers in pure samples object
+
+
+```{r, fig.width=8,fig.height=6}
+dso$st$marker_genes <- selected_marker_list
+result <-  dso$plot_projected("markers", "label", use_dims =  list(2:3, 4:5, 6:7, 8:9,10:11,11:12, 13:14, NULL), 
+                              with_history = F, with_solution=F, wrap=F, show_plots = F, with_legend = T)
+
+plot_lima_markers_2_3 <- result[[1]][[1]] +  scale_color_manual(values=custom_colors) + theme(legend.position = "none") 
+plot_lima_markers_4_5 <- result[[2]][[1]] +    scale_color_manual(values=custom_colors)+ theme(legend.position = "none")
+plot_lima_markers_6_7 <- result[[3]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_lima_markers_8_9 <- result[[4]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_lima_markers_10_11 <- result[[5]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_lima_markers_11_12 <- result[[6]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_lima_markers_13_14 <- result[[7]][[1]] +    scale_color_manual(values=custom_colors) + theme(legend.position = "none")
+plot_lima_markers_umap <- result[[8]][[1]] +    scale_color_manual(values=custom_colors)
+
+# show some
+plot_lima_markers_2_3 
+plot_lima_markers_4_5
+plot_lima_markers_6_7
+plot_lima_markers_umap
+```
+# Save all markers to files
+
+```{r}
+target_df <-   data.frame(lapply(seurat_markers, function(x) {
+  x <- unlist(x)
+  length(x) <- max(lengths(seurat_markers))
+  return(x)
+}))
+
+write.csv(x=target_df, file = paste0(dir_to_save_markers, "DREAM_markers_seurat_", number_of_markers, ".csv"), row.names = F)
+
+target_df <-   data.frame(lapply(seurat_eb_markers, function(x) {
+  x <- unlist(x)
+  length(x) <- max(lengths(seurat_eb_markers))
+  return(x)
+}))
+
+write.csv(x=target_df, file = paste0(dir_to_save_markers, "DREAM_markers_seurat_eb_", number_of_markers, ".csv"), row.names = F)
+
+target_df <-   data.frame(lapply(lima_markers, function(x) {
+  x <- unlist(x)
+  length(x) <- max(lengths(lima_markers))
+  return(x)
+}))
+
+write.csv(x=target_df, file = paste0(dir_to_save_markers, "DREAM_markers_lima_", number_of_markers, ".csv"), row.names = F)
+```
+
+
+
+# Save all plots to files
+
+```{r}
+### DualSimplex markers visualization
+
+filename <- paste0(dir_to_save_fig, "umap_with_seurat_markers", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_markers_umap,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "umap_with_seurat_markers_no_legend", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_markers_umap + theme(legend.position = "none"),
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_seurat_markers_2_3", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_markers_2_3,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_seurat_markers_4_5", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_markers_4_5,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_seurat_markers_6_7", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_markers_6_7,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_seurat_markers_8_9", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_markers_8_9,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_seurat_markers_10_11", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_markers_10_11,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_seurat_markers_13_14", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_markers_13_14,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "umap_with_seurat_eb_markers", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_eb_markers_umap,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "umap_with_seurat_eb_markers_no_legend", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_eb_markers_umap  + theme(legend.position = "none"),
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_seurat_eb_markers_2_3", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_eb_markers_2_3,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_seurat_eb_markers_4_5", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_eb_markers_4_5,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_seurat_eb_markers_6_7", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_eb_markers_6_7,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_seurat_eb_markers_8_9", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_eb_markers_8_9,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_seurat_eb_markers_10_11", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_eb_markers_10_11,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_seurat_eb_markers_13_14", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_seurat_eb_markers_13_14,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+
+filename <- paste0(dir_to_save_fig, "umap_with_lima_markers", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_lima_markers_umap,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "umap_with_lima_markers_no_legend", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_lima_markers_umap  + theme(legend.position = "none"),
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_lima_markers_2_3", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_lima_markers_2_3,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_lima_markers_4_5", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_lima_markers_4_5,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_lima_markers_6_7", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_lima_markers_6_7,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_lima_markers_8_9", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_lima_markers_8_9,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_lima_markers_10_11", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_lima_markers_10_11,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+filename <- paste0(dir_to_save_fig, "dimplot_with_lima_markers_13_14", ".svg")
+ggsave(
+  file = filename,
+  plot = plot_lima_markers_13_14,
+  width = 5,
+  height = 5,
+  device = svglite
+)
+
+
+
+filename <- paste0(dir_to_save_fig, "heatmap_seurat_basis", ".svg")
+svglite(filename, width = 10, height = 12)
+draw(heatmap_basis_seurat)
+dev.off()
+
+
+filename <- paste0(dir_to_save_fig, "heatmap_seurat_eb_basis", ".svg")
+svglite(filename, width = 10, height = 12)
+draw(heatmap_basis_seurat_eb)
+dev.off()
+
+
+filename <- paste0(dir_to_save_fig, "heatmap_lima_basis", ".svg")
+svglite(filename, width = 10, height = 12)
+draw(heatmap_basis_lima)
+dev.off()
+
+```

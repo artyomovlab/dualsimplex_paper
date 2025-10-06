@@ -5,7 +5,7 @@ output: html_document
 
 ```{r}
 source('../R/setup.R')
-source("../R/plotly_methods.R")
+source("../R/plotting_methods.R")
 library(plotly)
 library(RColorBrewer)
 ```
