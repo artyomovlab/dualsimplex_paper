@@ -155,7 +155,12 @@ per_run_results <- readRDS( paste0(dir_to_save_fig, "total_results_dream_sb.rds"
 
 ```
 
+```{r}
+## Optional
+per_run_results_rf <- readRDS( paste0("../out/6_dream_rf/", "total_results_dream_rf.rds"))
 
+per_run_results[["DualSimplex_RF"]] <- per_run_results_rf$DualSimplex
+```
 
 
 ## Get metric values and plot
@@ -168,7 +173,7 @@ methods_to_check <-  names(per_run_results)
 custom_colors <-  c("#E41A1C", "#A0CBE8FF", "#F28E2BFF", "#FFBE7DFF", "#59A14FFF", "#8CD17DFF", "#B6992DFF", "#F1CE63FF", "#499894FF", "#86BCB6FF", "#4E79A7FF", "#FF9D9AFF", "#79706EFF", "#BAB0ACFF", "#D37295FF", "#FABFD2FF", "#B07AA1FF", "#D4A6C8FF", "#9D7660FF", "#D7B5A6FF")
 
 custom_colors <-  custom_colors[1:length(custom_colors)]
-comparisons <-  list(c("DualSimplex", "Aginome-XMU"), c("DualSimplex", "xCell"), c("DualSimplex", "mitten_TDC19"))
+comparisons <-  list(c("DualSimplex", "Aginome-XMU"), c("DualSimplex", "xCell"), c("DualSimplex", "mitten_TDC19"), c("DualSimplex", "Aginome-XMU"),)
 # comparisons <-  list(c("DualSimplex", "Linseed"), c("DualSimplex", "TOAST"), c("DualSimplex", "CAM3"), c("DualSimplex", "CellDistinguisher"))
 names(comparisons) <- c("Aginome-XMU", "xCell")
 ```
