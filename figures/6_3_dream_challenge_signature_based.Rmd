@@ -155,7 +155,12 @@ per_run_results <- readRDS( paste0(dir_to_save_fig, "total_results_dream_sb.rds"
 
 ```
 
+```{r}
+## Optional
+per_run_results_rf <- readRDS( paste0("../out/6_dream_rf/", "total_results_dream_rf.rds"))
 
+per_run_results[["DualSimplex_RF"]] <- per_run_results_rf$DualSimplex
+```
 
 
 ## Get metric values and plot
@@ -168,9 +173,14 @@ methods_to_check <-  names(per_run_results)
 custom_colors <-  c("#E41A1C", "#A0CBE8FF", "#F28E2BFF", "#FFBE7DFF", "#59A14FFF", "#8CD17DFF", "#B6992DFF", "#F1CE63FF", "#499894FF", "#86BCB6FF", "#4E79A7FF", "#FF9D9AFF", "#79706EFF", "#BAB0ACFF", "#D37295FF", "#FABFD2FF", "#B07AA1FF", "#D4A6C8FF", "#9D7660FF", "#D7B5A6FF")
 
 custom_colors <-  custom_colors[1:length(custom_colors)]
-comparisons <-  list(c("DualSimplex", "Aginome-XMU"), c("DualSimplex", "xCell"), c("DualSimplex", "mitten_TDC19"))
-# comparisons <-  list(c("DualSimplex", "Linseed"), c("DualSimplex", "TOAST"), c("DualSimplex", "CAM3"), c("DualSimplex", "CellDistinguisher"))
-names(comparisons) <- c("Aginome-XMU", "xCell")
+comparisons <-  list(c("DualSimplex", "Aginome-XMU"), 
+                     c("DualSimplex", "xCell"), 
+                     c("DualSimplex", "mitten_TDC19"), 
+                     c("DualSimplex", "DualSimplex_RF"),
+                     c("DualSimplex_RF", "Aginome-XMU"),
+                     c("DualSimplex_RF", "mitten_TDC19"))
+
+names(comparisons) <- c("Aginome-XMU", "xCell","mitten_TDC19")
 ```
 
 ## For all datasets
@@ -207,11 +217,11 @@ total_result$cell_type <- as.factor(total_result$cell_type)
 total_result$metric_value <- as.numeric(total_result$metric_value)
 
 
-box_plot_rmse <-  plot_single_boxplot(total_result, 
+box_plot_rmse_with_rf <-  plot_single_boxplot(total_result, 
                                       comparisons =comparisons,
                                       title = "Distance to original proportion rows", 
-                                      metric_title = get_metric_plot_title(metric), log_scale = F, test="t.test", custom_colors = custom_colors) 
-box_plot_rmse
+                                      metric_title = get_metric_plot_title(metric), log_scale = F, custom_colors = custom_colors) 
+box_plot_rmse_with_rf
 ```
 
 
@@ -226,6 +236,106 @@ for (selected_dataset in selected_datasets) {
   current_true_proportions <-  per_dataset_proportions[[selected_dataset]]
   current_dataset_estimated_matrices <- lapply(per_run_results, function(current_result) {current_result$proportions[[selected_dataset]][1:dim(current_true_proportions)[[1]],]})
   names(current_dataset_estimated_matrices) <-  names(per_run_results)
+  current_metric_values <- get_metric_values(current_dataset_estimated_matrices, current_true_proportions, metric = metric, per_row = T, normalize = T)
+  current_metric_values$dataset <-  selected_dataset
+  separate_results[[selected_dataset]] <- current_metric_values
+}
+
+total_result <-  do.call(rbind, separate_results)
+total_result$method <-  as.factor(total_result$method)
+sorted_by_median_metric <- total_result %>% dplyr::group_by(method) %>% 
+  dplyr::summarise(median_metric = median(metric_value)) %>% 
+  dplyr::arrange(median_metric)
+method_order <- sorted_by_median_metric$method
+# sort comparisons according to order
+
+total_result$method <- factor(total_result$method, levels=method_order)
+
+total_result$cell_type <- as.factor(total_result$cell_type)
+total_result$metric_value <- as.numeric(total_result$metric_value)
+
+
+box_plot_pearson_with_rf <-  plot_single_boxplot(total_result, 
+                                      comparisons =comparisons,
+                                      title = "Distance to original proportion rows", 
+                                      metric_title = get_metric_plot_title(metric), log_scale = F, custom_colors = custom_colors) 
+box_plot_pearson_with_rf
+
+```
+
+
+
+## Get metric values and plot without reference free
+
+
+
+```{r}
+source("../R/plotting_methods.R")
+methods_to_check <-  names(per_run_results)[!(names(per_run_results) %in% ("DualSimplex_RF"))]
+selected_per_run_results <- per_run_results[methods_to_check]
+custom_colors <-  c("#E41A1C", "#A0CBE8FF", "#F28E2BFF", "#FFBE7DFF", "#59A14FFF", "#8CD17DFF", "#B6992DFF", "#F1CE63FF", "#499894FF", "#86BCB6FF", "#4E79A7FF", "#FF9D9AFF", "#79706EFF", "#BAB0ACFF", "#D37295FF", "#FABFD2FF", "#B07AA1FF", "#D4A6C8FF", "#9D7660FF", "#D7B5A6FF")
+
+custom_colors <-  custom_colors[1:length(custom_colors)]
+comparisons <-  list(c("DualSimplex", "Aginome-XMU"), 
+                     c("DualSimplex", "xCell"), 
+                     c("DualSimplex", "mitten_TDC19"))
+
+names(comparisons) <- c("Aginome-XMU", "xCell","mitten_TDC19")
+```
+
+## For all datasets
+```{r}
+selected_datasets <- names(per_dataset_proportions)
+```
+
+### RMSE values
+```{r fig.width=20, fig.height=5}
+library(dplyr)
+metric <-  "rmse_loss"
+
+separate_results <-  list()
+for (selected_dataset in selected_datasets) {
+  current_true_proportions <-  per_dataset_proportions[[selected_dataset]]
+  current_dataset_estimated_matrices <- lapply(selected_per_run_results, function(current_result) {current_result$proportions[[selected_dataset]][1:dim(current_true_proportions)[[1]],]})
+  names(current_dataset_estimated_matrices) <-  names(selected_per_run_results)
+  current_metric_values <- get_metric_values(current_dataset_estimated_matrices, current_true_proportions, metric = metric, per_row = T, normalize = T)
+  current_metric_values$dataset <-  selected_dataset
+  separate_results[[selected_dataset]] <- current_metric_values
+}
+
+total_result <-  do.call(rbind, separate_results)
+total_result$method <-  as.factor(total_result$method)
+sorted_by_median_metric <- total_result %>% dplyr::group_by(method) %>% 
+  dplyr::summarise(median_metric = median(metric_value)) %>% 
+  dplyr::arrange(median_metric)
+method_order <- sorted_by_median_metric$method
+ # sort comparisons according to order
+# 
+total_result$method <- factor(total_result$method, levels=method_order)
+
+total_result$cell_type <- as.factor(total_result$cell_type)
+total_result$metric_value <- as.numeric(total_result$metric_value)
+
+
+box_plot_rmse <-  plot_single_boxplot(total_result, 
+                                      comparisons =comparisons,
+                                      title = "Distance to original proportion rows", 
+                                      metric_title = get_metric_plot_title(metric), log_scale = F, custom_colors = custom_colors) 
+box_plot_rmse
+```
+
+
+### Pearson values
+
+```{r fig.width=20, fig.height=5}
+metric <-  "pearson_loss"
+
+
+separate_results <-  list()
+for (selected_dataset in selected_datasets) {
+  current_true_proportions <-  per_dataset_proportions[[selected_dataset]]
+  current_dataset_estimated_matrices <- lapply(selected_per_run_results, function(current_result) {current_result$proportions[[selected_dataset]][1:dim(current_true_proportions)[[1]],]})
+  names(current_dataset_estimated_matrices) <-  names(selected_per_run_results)
   current_metric_values <- get_metric_values(current_dataset_estimated_matrices, current_true_proportions, metric = metric, per_row = T, normalize = T)
   current_metric_values$dataset <-  selected_dataset
   separate_results[[selected_dataset]] <- current_metric_values
@@ -480,7 +590,48 @@ ggsave(
   device = svglite
 )
 
+###
 
+result_plot <-
+  ggarrange(
+    box_plot_pearson_with_rf,
+    box_plot_rmse_with_rf,
+    nrow = 2,
+    ncol = 1,
+    common.legend = T,
+    legend = 'right',
+    align = "hv"
+  )
+
+filename <- paste0(dir_to_save_fig, "metrics_plot_with_legend_rf", ".svg")
+ggsave(
+  filename,
+  result_plot,
+  width = 12,
+  height = 8,
+  device = svglite
+)
+
+
+result_plot <-
+  ggarrange(
+    box_plot_pearson_with_rf,
+    box_plot_rmse_with_rf,
+    nrow = 2,
+    ncol = 1,
+    common.legend = T,
+    legend = 'none',
+    align = "hv"
+  )
+
+filename <- paste0(dir_to_save_fig, "metrics_plot_no_legend_rf", ".svg")
+ggsave(
+  filename,
+  result_plot,
+  width = 12,
+  height = 8,
+  device = svglite
+)
 
 
 
